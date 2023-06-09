@@ -22,14 +22,33 @@ function print_batches(circuit_batches)
     for batch in circuit_batches
         println("Shift: ", i)
         for gate in batch
-            println("Gate from ", gate.q1, " to ", gate.q2)
+            println(typeof(gate)," from ", gate.q1, " to ", gate.q2)
         end
         i += 1
     end
 end
 
+# takes a circuit and strips out the measurement gates
+# TODO make this less wonky - don't simply delete the measurement gates
+function clifford_grouper(circuit)
+    groups = []
+    for i in eachindex(circuit)
+        try 
+            circuit[i].q1
+            circuit[i].q2
+            push!(groups, circuit[i])
+        catch
+            println("index", i, "is a measurement")
+        end
+    end
+    return groups
+end
+
 function test(circuit=example_that_broke_h1)
-    println("Caclulate shifts on 3 rep code")
+    # Removes measurement gates
+    circuit = clifford_grouper(circuit)
+
+    println("Caclulate shifts without any reordering")
     print_batches(calculate_shifts(circuit))
 
     println("\nCaclulate shifts on same code, after delta sorting the gates")
@@ -41,17 +60,26 @@ function test(circuit=example_that_broke_h1)
         println(block)
     end
 
-    order = ancil_sort_h1(blocks)
-    println("\nOrder after running heuristic 1\n", order)
+    h1_order = ancil_sort_h1(blocks)
+    println("\nOrder after running heuristic 1\n", h1_order)
 
     println("\nShifts on delta sorted reordered h1 circuit")
-    print_batches(gate_Shuffle(ancil_reindex(circuit,order)))
+    h1_batches = gate_Shuffle(ancil_reindex(circuit,h1_order))
+    print_batches(h1_batches)
 
-    order = ancil_sort_h2(blocks)
-    println("\nOrder after running heuristic 2\n", order)
+    h2_order = ancil_sort_h2(blocks)
+    println("\nOrder after running heuristic 2\n", h2_order)
 
     println("\nShifts on delta sorted reordered h2 circuit")
-    print_batches(gate_Shuffle(ancil_reindex(circuit,order)))
+    h2_batches = gate_Shuffle(ancil_reindex(circuit,h2_order))
+    print_batches(h2_batches)
+
+    # Returns the best reordered circuit
+    if length(h1_batches)<length(h2_batches)
+        return ancil_reindex(circuit, h1_order)
+    else 
+        return ancil_reindex(circuit, h2_order)
+    end
 end
 
 # Length of the returnable is the number of shifts
@@ -73,15 +101,12 @@ function calculate_shifts(circuit)
     return parallelBatches
 end
 
-# TODO pull the delta= intial configuration set of gates to the front
 function gate_Shuffle(circuit)
     circuit = sort(circuit, by = x -> get_delta(x))
-   calculate_shifts(circuit)
+    calculate_shifts(circuit)
 end
 
-
 function create_blocks(circuit)
-    # create sets (orig_ancil_index, primal_set)
     circuit = sort!(circuit, by = x -> x.q2)
     numDataBits = circuit[1].q2 - 1
     sets = []
@@ -119,11 +144,13 @@ function ancil_sort_h2(blockset)
     return order
 end
 
+# This was written with only CNOTS in mind. It's possible this function is mixing up the gates
 function ancil_reindex(circuit, order)
     new_circuit = []
     numDataBits = circuit[1].q2 - 1 # This assumes the circuit is sorted by target bits
     for gate in circuit
-        push!(new_circuit, sCNOT(gate.q1, indexin(gate.q2, order)[1]+numDataBits))
+        gate_type = typeof(gate)
+        push!(new_circuit, gate_type(gate.q1, indexin(gate.q2, order)[1]+numDataBits))
     end
     return new_circuit
 end
