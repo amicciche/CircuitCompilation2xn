@@ -11,12 +11,12 @@ function test_code(code)
 
     diff = CircuitCompilation2xn.evaluate(mcirc, new_circuit, ecirc, code_n(code), code_s(code), code_s(code))
 
-    println("\nNumber of discrepancies between the reorderd circuit and the original over all possible 1 qubit Pauli errors inserted right after the encoding circuit:")
+    println("\nNumber of discrepancies between the reordered circuit and the original over all possible 1 qubit Pauli errors inserted right after the encoding circuit:")
     println(sum(diff))
 end
 
 println("\n######################### Steane7 #########################")
 test_code(Steane7())
 
-println("\n######################### Sho9 #########################")
+println("\n######################### Shor9 #########################")
 test_code(Shor9())
