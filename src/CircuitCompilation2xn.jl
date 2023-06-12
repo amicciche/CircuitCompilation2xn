@@ -28,25 +28,26 @@ function print_batches(circuit_batches)
     end
 end
 
-# takes a circuit and strips out the measurement gates
-# TODO make this less wonky - don't simply delete the measurement gates
+# First returns a circuit with the measurements removed, and then returns a circuit of just measurements
 function clifford_grouper(circuit)
-    groups = []
+    non_mz = []
+    mz = []
     for i in eachindex(circuit)
         try 
             circuit[i].q1
             circuit[i].q2
-            push!(groups, circuit[i])
+            push!(non_mz, circuit[i])
         catch
-            println("index", i, "is a measurement")
+            #println("index", i, "is a measurement")
+            push!(mz, circuit[i])
         end
     end
-    return groups
+    return non_mz, mz
 end
 
+# For now, this function runs the entire pipeline.
 function test(circuit=example_that_broke_h1)
-    # Removes measurement gates
-    circuit = clifford_grouper(circuit)
+    circuit, measurement_circuit = clifford_grouper(circuit)
 
     println("Caclulate shifts without any reordering")
     print_batches(calculate_shifts(circuit))
@@ -59,27 +60,31 @@ function test(circuit=example_that_broke_h1)
     for block in blocks
         println(block)
     end
+    numDataBits = circuit[1].q2 - 1 # this calulation uses the sorting done by create_blocks
 
     h1_order = ancil_sort_h1(blocks)
     println("\nOrder after running heuristic 1\n", h1_order)
 
     println("\nShifts on delta sorted reordered h1 circuit")
-    h1_batches = gate_Shuffle(ancil_reindex(circuit,h1_order))
+    h1_batches = gate_Shuffle(ancil_reindex(circuit,h1_order,numDataBits))
     print_batches(h1_batches)
 
     h2_order = ancil_sort_h2(blocks)
     println("\nOrder after running heuristic 2\n", h2_order)
 
     println("\nShifts on delta sorted reordered h2 circuit")
-    h2_batches = gate_Shuffle(ancil_reindex(circuit,h2_order))
+    h2_batches = gate_Shuffle(ancil_reindex(circuit,h2_order, numDataBits))
     print_batches(h2_batches)
 
     # Returns the best reordered circuit
     if length(h1_batches)<length(h2_batches)
-        return ancil_reindex(circuit, h1_order)
+        new_circuit = ancil_reindex(circuit, h1_order,numDataBits)
+        new_mz = ancil_reindex_mz(measurement_circuit,h1_order,numDataBits)
     else 
-        return ancil_reindex(circuit, h2_order)
+        new_circuit = ancil_reindex(circuit, h2_order,numDataBits)
+        new_mz = ancil_reindex_mz(measurement_circuit,h2_order,numDataBits)
     end
+    return vcat(new_circuit, new_mz)
 end
 
 # Length of the returnable is the number of shifts
@@ -145,12 +150,22 @@ function ancil_sort_h2(blockset)
 end
 
 # This was written with only CNOTS in mind. It's possible this function is mixing up the gates
-function ancil_reindex(circuit, order)
-    new_circuit = []
-    numDataBits = circuit[1].q2 - 1 # This assumes the circuit is sorted by target bits
+function ancil_reindex(circuit, order, numDataBits)
+    new_circuit = Vector{QuantumClifford.AbstractOperation}();
+    #numDataBits = circuit[1].q2 - 1 # This assumes the circuit is sorted by target bits, which is done by the create_blocks function
     for gate in circuit
         gate_type = typeof(gate)
         push!(new_circuit, gate_type(gate.q1, indexin(gate.q2, order)[1]+numDataBits))
+    end
+    sort!(new_circuit, by = x -> get_delta(x))
+    return new_circuit
+end
+
+function ancil_reindex_mz(mz_circuit, order, numDataBits)
+    new_circuit = Vector{QuantumClifford.AbstractOperation}();
+    for gate in mz_circuit
+        gate_type = typeof(gate)
+        push!(new_circuit, gate_type(indexin(gate.qubit, order)[1]+numDataBits, gate.bit))
     end
     return new_circuit
 end
