@@ -28,7 +28,7 @@ function print_batches(circuit_batches)
     end
 end
 
-# First returns a circuit with the measurements removed, and then returns a circuit of just measurements
+"""First returns a circuit with the measurements removed, and then returns a circuit of just measurements"""
 function clifford_grouper(circuit)
     non_mz = []
     mz = []
@@ -45,7 +45,7 @@ function clifford_grouper(circuit)
     return non_mz, mz
 end
 
-# For now, this function runs the entire pipeline.
+"""Runs pipline on a circuit. If using a code, ECC.naive_syndrome_circuit should be run first"""
 function test(circuit=example_that_broke_h1)
     circuit, measurement_circuit = clifford_grouper(circuit)
 
@@ -87,11 +87,11 @@ function test(circuit=example_that_broke_h1)
     return vcat(new_circuit, new_mz)
 end
 
-# Length of the returnable is the number of shifts
 function get_delta(gate)
     return gate.q2-gate.q1
 end
-    
+ 
+"""Length of the returnable is the number of shifts"""
 function calculate_shifts(circuit)
     parallelBatches = []
     currentDelta = -1
@@ -131,6 +131,7 @@ function create_blocks(circuit)
     return blockset    
 end
 
+"""Sorts first by ghost length of the block visualation and secondarily by the total length"""
 function ancil_sort_h1(blockset)
     sort!(blockset, by = x -> (x.ghostlength, x.length), rev=true)
     order = []
@@ -140,6 +141,7 @@ function ancil_sort_h1(blockset)
     return order
 end
 
+"""Sorts first by total length of the block visualation and secondarily by the ghost length"""
 function ancil_sort_h2(blockset)
     sort!(blockset, by = x -> ( x.length,x.ghostlength), rev=true)
     order = []
@@ -150,9 +152,9 @@ function ancil_sort_h2(blockset)
 end
 
 # This was written with only CNOTS in mind. It's possible this function is mixing up the gates
+"""Uses the order obtained by [`ancil_sort_h1`](@ref) or [`ancil_sort_h2`](@ref) to reindex the ancillary qubits in the provided circuit"""
 function ancil_reindex(circuit, order, numDataBits)
     new_circuit = Vector{QuantumClifford.AbstractOperation}();
-    #numDataBits = circuit[1].q2 - 1 # This assumes the circuit is sorted by target bits, which is done by the create_blocks function
     for gate in circuit
         gate_type = typeof(gate)
         push!(new_circuit, gate_type(gate.q1, indexin(gate.q2, order)[1]+numDataBits))
@@ -161,6 +163,7 @@ function ancil_reindex(circuit, order, numDataBits)
     return new_circuit
 end
 
+"""Reindexes a circuit of just measurements, based on an order obtained by [`ancil_sort_h1`](@ref) or [`ancil_sort_h2`](@ref)"""
 function ancil_reindex_mz(mz_circuit, order, numDataBits)
     new_circuit = Vector{QuantumClifford.AbstractOperation}();
     for gate in mz_circuit
@@ -168,6 +171,48 @@ function ancil_reindex_mz(mz_circuit, order, numDataBits)
         push!(new_circuit, gate_type(indexin(gate.qubit, order)[1]+numDataBits, gate.bit))
     end
     return new_circuit
+end
+
+"""Inserts all possible 1 qubit Pauli errors on two circuits data qubits, after encoding. The compares them. The returned vector is for each error, how many discrepancies were caused."""
+function evaluate(oldcirc, newcirc, ecirc, dataqubits, ancqubits, regbits)
+    samples = 50
+
+    diff = []
+    types = [sX, sY, sZ]
+    for gate in types
+        for qubit in 1:dataqubits
+            errors = gate(qubit)
+            fullcirc_old = vcat(ecirc,errors,oldcirc)
+            fullcirc_new = vcat(ecirc,errors,newcirc)
+            result_old = []
+            for i in 1:samples
+                bits = zeros(Bool,regbits)
+                s = one(Stabilizer, dataqubits+ancqubits)
+                state = Register(s,bits)
+
+                mctrajectory!(state, fullcirc_old)
+                push!(result_old, bits)
+            end
+            result_old = reduce(vcat, transpose.(result_old))
+
+            result_new = []
+            for i in 1:samples
+                bits = zeros(Bool,regbits)
+                s = one(Stabilizer, dataqubits+ancqubits)
+                state = Register(s,bits)
+
+                mctrajectory!(state, fullcirc_new)
+                push!(result_new, bits)
+            end
+            result_new = reduce(vcat, transpose.(result_new))
+
+            # This only works when we assume the input won't cause a nondeterministic measurement
+            # instead of sum, we should check that each column has the same distribution to account for nondeterministic mesurements 
+            # For Shor and Steane this works great, but might need to change this in the future
+            push!(diff, sum(result_old .⊻ result_new))
+        end
+    end
+    return diff
 end
 
 end # module CircuitCompilation2xn
