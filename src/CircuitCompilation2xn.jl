@@ -1,5 +1,6 @@
 module CircuitCompilation2xn
 using QuantumClifford
+using CairoMakie
 
 threeRepCode = [sCNOT(1,4),sCNOT(2,4),sCNOT(2,5),sCNOT(3,5)]
 k4_example = [sCNOT(1,4),sCNOT(3,4),sCNOT(2,5),sCNOT(2,4),sCNOT(2,7),sCNOT(3,6),sCNOT(3,5)]
@@ -213,6 +214,86 @@ function evaluate(oldcirc, newcirc, ecirc, dataqubits, ancqubits, regbits)
         end
     end
     return diff
+end
+
+# The below three functions are from the QEC Lec 1 Notebook (with some changes)
+# - create_lookup_table()
+# - evaluate_code_decoder_noisy_circuit()
+# - plot_code_performance()
+"""Generate a lookup table for decoding single qubit errors. Maps s⃗ → e⃗."""
+function create_lookup_table(code::Stabilizer)
+    lookup_table = Dict()
+    constraints, qubits = size(code)
+    # In the case of no errors
+    lookup_table[ zeros(UInt8, constraints) ] = zero(PauliOperator, qubits)
+    # In the case of single bit errors
+    for bit_to_be_flipped in 1:qubits
+        for error_type in [single_x, single_y, single_z]
+            # Generate e⃗
+            error = error_type(qubits, bit_to_be_flipped)
+            # Calculate s⃗
+            # (check which stabilizer rows do not commute with the Pauli error)
+            syndrome = comm(error, code)
+            # Store s⃗ → e⃗
+            lookup_table[syndrome] = error
+        end
+    end
+    lookup_table
+end
+
+"""For a given physical bit-flip error rate, parity check matrix, and a lookup table,
+estimate logical error rate, taking into account noisy circuits."""
+function evaluate_code_decoder_noisy_circuit(code::Stabilizer, circuit,p,q; samples=10_000)
+    lookup_table = create_lookup_table(code)
+
+    noise = UnbiasedUncorrelatedNoise(0.01)
+    make_noisy(gate,noise) = gate
+    make_noisy(gate::sCNOT,noise) = NoisyGate(gate,noise)
+    make_noisy(gates::Vector,noise) = make_noisy.(gates,(noise,))
+
+    constraints, qubits = size(code)
+    initial_state = Register(MixedDestabilizer(code ⊗ S"Z"), zeros(Bool,constraints))
+    initial_state.stab.rank = qubits+1 # TODO hackish and ugly, needs fixing
+    no_error_state = canonicalize!(stabilizerview(traceout!(copy(initial_state),qubits+1)))
+    # prepare measurement circuit
+    syndrome_circuit = circuit
+    noisy_circuit = make_noisy(syndrome_circuit, UnbiasedUncorrelatedNoise(q/3))
+    decoded = 0 # Counts correct decodings
+    for sample in 1:samples
+        state = copy(initial_state)
+        # Generate random error
+        error = random_pauli(qubits,p/3,nophase=true)
+        # Apply that error to your physical system
+        apply!(state, error ⊗ P"I")
+        # Run the syndrome measurement circuit
+        mctrajectory!(state, noisy_circuit)
+        syndrome = UInt8.(bitview(state))
+        # Decode the syndrome
+        guess = get(lookup_table,syndrome,nothing)
+        if isnothing(guess)
+            continue
+        end
+        # Apply the suggested correction
+        apply!(state, guess ⊗ P"I")
+        # Check for errors
+        if no_error_state == canonicalize!(stabilizerview(traceout!(state,qubits+1)))
+            decoded += 1
+        end
+    end
+    1 - decoded / samples
+end
+
+function plot_code_performance(error_rates, post_ec_error_rates; title="")
+    f = Figure(resolution=(500,300))
+    ax = f[1,1] = Axis(f, xlabel="single (qu)bit error rate",title=title)
+    ax.aspect = DataAspect()
+    lim = max(error_rates[end],post_ec_error_rates[end])
+    lines!([0,lim], [0,lim], label="single bit", color=:black)
+    plot!(error_rates, post_ec_error_rates, label="after decoding", color=:black)
+    xlims!(0,lim)
+    ylims!(0,lim)
+    f[1,2] = Legend(f, ax, "Error Rates")
+    f
 end
 
 end # module CircuitCompilation2xn
