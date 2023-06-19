@@ -39,7 +39,6 @@ function clifford_grouper(circuit)
             circuit[i].q2
             push!(non_mz, circuit[i])
         catch
-            #println("index", i, "is a measurement")
             push!(mz, circuit[i])
         end
     end
@@ -218,7 +217,7 @@ end
 
 # The below three functions are from the QEC Lec 1 Notebook (with some changes)
 # - create_lookup_table()
-# - evaluate_code_decoder_noisy_circuit()
+# - evaluate_code_decoder()
 # - plot_code_performance()
 """Generate a lookup table for decoding single qubit errors. Maps s⃗ → e⃗."""
 function create_lookup_table(code::Stabilizer)
@@ -243,21 +242,14 @@ end
 
 """For a given physical bit-flip error rate, parity check matrix, and a lookup table,
 estimate logical error rate, taking into account noisy circuits."""
-function evaluate_code_decoder_noisy_circuit(code::Stabilizer, circuit,p,q; samples=10_000)
+function evaluate_code_decoder(code::Stabilizer, circuit,p; samples=10_000)
     lookup_table = create_lookup_table(code)
-
-    noise = UnbiasedUncorrelatedNoise(0.01)
-    make_noisy(gate,noise) = gate
-    make_noisy(gate::sCNOT,noise) = NoisyGate(gate,noise)
-    make_noisy(gates::Vector,noise) = make_noisy.(gates,(noise,))
 
     constraints, qubits = size(code)
     initial_state = Register(MixedDestabilizer(code ⊗ S"Z"), zeros(Bool,constraints))
     initial_state.stab.rank = qubits+1 # TODO hackish and ugly, needs fixing
     no_error_state = canonicalize!(stabilizerview(traceout!(copy(initial_state),qubits+1)))
-    # prepare measurement circuit
-    syndrome_circuit = circuit
-    noisy_circuit = make_noisy(syndrome_circuit, UnbiasedUncorrelatedNoise(q/3))
+
     decoded = 0 # Counts correct decodings
     for sample in 1:samples
         state = copy(initial_state)
@@ -266,7 +258,7 @@ function evaluate_code_decoder_noisy_circuit(code::Stabilizer, circuit,p,q; samp
         # Apply that error to your physical system
         apply!(state, error ⊗ P"I")
         # Run the syndrome measurement circuit
-        mctrajectory!(state, noisy_circuit)
+        mctrajectory!(state, circuit)
         syndrome = UInt8.(bitview(state))
         # Decode the syndrome
         guess = get(lookup_table,syndrome,nothing)
@@ -280,6 +272,78 @@ function evaluate_code_decoder_noisy_circuit(code::Stabilizer, circuit,p,q; samp
             decoded += 1
         end
     end
+    1 - decoded / samples
+end
+
+# Uses encoding circuit to initialize
+function evaluate_code_decoder_w_ecirc(code::Stabilizer, ecirc, circuit,p; samples=10_000)
+    lookup_table = create_lookup_table(code)
+
+    constraints, qubits = size(code)
+    code_w_anc = QuantumClifford.one(Stabilizer,constraints+qubits)
+
+    initial_state = Register(MixedDestabilizer(code_w_anc), zeros(Bool,constraints))
+    initial_state.stab.rank = qubits+constraints # TODO hackish and ugly, needs fixing
+    mctrajectory!(initial_state, ecirc)
+
+    no_error_state = canonicalize!(stabilizerview(traceout!(copy(initial_state),qubits+constraints)))
+    
+    decoded = 0 # Counts correct decodings
+    for sample in 1:samples
+        state = copy(initial_state)
+        # Generate random error
+        error = random_pauli(qubits,p/3,nophase=true)
+        for anc in 1:constraints
+            error = error ⊗ P"I"
+        end
+        # Apply that error to your physical system
+        apply!(state, error)
+        # Run the syndrome measurement circuit
+        mctrajectory!(state, circuit)
+        syndrome = UInt8.(bitview(state))
+        # Decode the syndrome
+        guess = get(lookup_table,syndrome,nothing)
+        if isnothing(guess)
+            continue
+        end
+        # Apply the suggested correction
+        for anc in 1:constraints
+            guess = guess ⊗ P"I"
+        end
+        apply!(state, guess)
+        # Check for errors
+        if no_error_state[1:constraints,1:qubits] == canonicalize!(stabilizerview(traceout!(state,qubits+constraints)))[1:constraints,1:qubits]
+            decoded += 1
+        end
+    end
+    1 - decoded / samples
+end
+
+#PauliFrame version of above
+function evaluate_code_decoder_w_ecirc_pf(code::Stabilizer, ecirc, circuit,p; samples=10_000)
+    lookup_table = create_lookup_table(code)
+
+    constraints, qubits = size(code)
+    errors = [PauliError(i,p) for i in 1:qubits]
+    fullcircuit = vcat(ecirc, errors, circuit)
+
+    # This is an assumption for now
+    regbits = constraints
+
+    frames = PauliFrame(samples, qubits+constraints, regbits)
+    pftrajectories(frames, fullcircuit)
+    syndromes = pfmeasurements(frames)
+
+    decoded = 0
+    for row in eachrow(syndromes)
+        guess = get(lookup_table,row,nothing)
+        if isnothing(guess)
+            continue
+        else
+            decoded += 1
+        end
+    end
+    
     1 - decoded / samples
 end
 
