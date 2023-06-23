@@ -61,6 +61,20 @@ function pf_encoding_plot(code, name=string(typeof(code)))
     return f1, f2
 end
 
+function encoding_plot_shifts(code, name=string(typeof(code)))
+    scirc = naive_syndrome_circuit(code)
+    ecirc = encoding_circuit(code)
+    circ = scirc
+
+    error_rates = 0.000:0.00150:0.08
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, circ, p) for p in error_rates]
+
+    new_circuit = CircuitCompilation2xn.test(scirc)
+    post_ec_error_rates_shifts = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, new_circuit, p) for p in error_rates]
+    original = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(parity_checks(code), ecirc, new_circuit, p) for p in error_rates]
+    plot = CircuitCompilation2xn.plot_code_performance_shift(error_rates, post_ec_error_rates, post_ec_error_rates_shifts,original, title=name*" Circuit w/ Encoding Circuit")
+    return plot
+end
 
 #println("\n######################### Steane7 #########################")
 #test_code(Steane7())
@@ -74,4 +88,7 @@ end
 #orig, new = encoding_plot(Shor9())
 
 #orig, new = pf_encoding_plot(Steane7())
-orig, new = pf_encoding_plot(Shor9())
+#orig, new = pf_encoding_plot(Shor9())
+
+plot_3 = encoding_plot_shifts(Steane7())
+#plot_3 = encoding_plot_shifts(Shor9())

@@ -93,7 +93,7 @@ end
  
 """Length of the returnable is the number of shifts"""
 function calculate_shifts(circuit)
-    parallelBatches = []
+    parallelBatches = Vector{AbstractTwoQubitOperator}[]
     currentDelta = -1
     for gate in circuit
         delta = get_delta(gate)
@@ -347,6 +347,66 @@ function evaluate_code_decoder_w_ecirc_pf(code::Stabilizer, ecirc, circuit,p; sa
     1 - decoded / samples
 end
 
+# This _shifts version applies errors not only at the beginning of the syndrome circuit but after each 2xn shifting AbstractOperation
+function evaluate_code_decoder_w_ecirc_shifts(code::Stabilizer, ecirc, circuit,p; samples=1000)
+    lookup_table = create_lookup_table(code)
+
+    constraints, qubits = size(code)
+    code_w_anc = QuantumClifford.one(Stabilizer,constraints+qubits)
+
+    initial_state = Register(MixedDestabilizer(code_w_anc), zeros(Bool,constraints))
+    initial_state.stab.rank = qubits+constraints # TODO hackish and ugly, needs fixing
+    mctrajectory!(initial_state, ecirc)
+
+    no_error_state = canonicalize!(stabilizerview(traceout!(copy(initial_state),qubits+constraints)))
+    
+    function apply_error!(state, qubits, constraints, p)
+        # Generate random error
+        error = random_pauli(qubits,p/3,nophase=true)
+        for anc in 1:constraints
+            error = error ⊗ P"I"
+        end
+        # Apply that error to your physical system
+        apply!(state, error)
+    end
+
+    non_mz, mz = clifford_grouper(circuit)
+    non_mz = calculate_shifts(non_mz)
+
+    decoded = 0 # Counts correct decodings
+    for sample in 1:samples
+        state = copy(initial_state)
+              
+        # Non Measurements and shifts
+        for subcircuit in non_mz
+            # Shift!
+            apply_error!(state, qubits, constraints, p)
+            # Run parallel batch
+            mctrajectory!(state, subcircuit)
+        end
+       
+        # Run measurements - should there be another set of errors before this?
+        mctrajectory!(state, mz)
+        
+        syndrome = UInt8.(bitview(state))
+        # Decode the syndrome
+        guess = get(lookup_table,syndrome,nothing)
+        if isnothing(guess)
+            continue
+        end
+        # Apply the suggested correction
+        for anc in 1:constraints
+            guess = guess ⊗ P"I"
+        end
+        apply!(state, guess)
+        # Check for errors
+        if no_error_state[1:constraints,1:qubits] == canonicalize!(stabilizerview(traceout!(state,qubits+constraints)))[1:constraints,1:qubits]
+            decoded += 1
+        end
+    end
+    1 - decoded / samples
+end
+
 function plot_code_performance(error_rates, post_ec_error_rates; title="")
     f = Figure(resolution=(500,300))
     ax = f[1,1] = Axis(f, xlabel="single (qu)bit error rate",title=title)
@@ -356,6 +416,24 @@ function plot_code_performance(error_rates, post_ec_error_rates; title="")
     plot!(error_rates, post_ec_error_rates, label="after decoding", color=:black)
     xlims!(0,lim)
     ylims!(0,lim)
+    f[1,2] = Legend(f, ax, "Error Rates")
+    f
+end
+
+# Function for generating 3plot - orignal circuit with shift errors, compiled with shift errors, and then compared to orignal  shift errors.
+function plot_code_performance_shift(error_rates, post_ec_error_rates_unsorted, post_ec_error_rates_shifts_sorted, original; title="")
+    #post_ec_error_rates = log.(post_ec_error_rates)
+    #error_rates = log.(error_rates)
+    f = Figure(resolution=(900,700))
+    ax = f[1,1] = Axis(f, xlabel="single (qu)bit error rate",title=title)
+    #ax.aspect = DataAspect()
+    #lim = max(error_rates[end],post_ec_error_rates[end])
+    #lines!([0,lim], [0,lim], label="single bit", color=:black)
+    scatter!(error_rates, post_ec_error_rates_unsorted, label="Original circuit with shift errors", color=:red)
+    scatter!(error_rates, post_ec_error_rates_shifts_sorted, label="Compiled circuit with shift errors", color=:blue)
+    scatter!(error_rates, original, label="Only Initial errors", color=:black)
+    #xlims!(0,lim)
+    #ylims!(0,lim)
     f[1,2] = Legend(f, ax, "Error Rates")
     f
 end
