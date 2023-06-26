@@ -1,6 +1,7 @@
 module CircuitCompilation2xn
 using QuantumClifford
 using CairoMakie
+using QuantumClifford.ECC: Steane7, Shor9, naive_syndrome_circuit, encoding_circuit, parity_checks, code_s, code_n
 
 threeRepCode = [sCNOT(1,4),sCNOT(2,4),sCNOT(2,5),sCNOT(3,5)]
 k4_example = [sCNOT(1,4),sCNOT(3,4),sCNOT(2,5),sCNOT(2,4),sCNOT(2,7),sCNOT(3,6),sCNOT(3,5)]
@@ -9,8 +10,8 @@ example_that_broke_h1= [sCNOT(5,6), sCNOT(3,6),sCNOT(1,6),sCNOT(4,7),sCNOT(2,7),
 struct qblock
     elements::Vector{Int}
     ancil::Int
-    length::Int
-    ghostlength::Int
+    length::Int # Useful for heuristics
+    ghostlength::Int # Useful for heuristics
 end
 
 function qblock(elements, ancil)
@@ -18,6 +19,7 @@ function qblock(elements, ancil)
     return block
 end
 
+"""Custom print for a list of circuits. This arises from [`calculate_shifts`](@ref), and [`gate_Shuffle`](@ref)"""
 function print_batches(circuit_batches)
     i = 1
     for batch in circuit_batches
@@ -87,11 +89,12 @@ function test(circuit=example_that_broke_h1)
     return vcat(new_circuit, new_mz)
 end
 
+"""Delta of a gate is the difference in index of the target and control bit"""
 function get_delta(gate)
     return gate.q2-gate.q1
 end
  
-"""Length of the returnable is the number of shifts"""
+"""Length of the returnable is the number of shifts. Splits a circuit into subcircuits that must be run in sequence due to the 2xn hardware constraints"""
 function calculate_shifts(circuit)
     parallelBatches = Vector{AbstractTwoQubitOperator}[]
     currentDelta = -1
@@ -106,11 +109,13 @@ function calculate_shifts(circuit)
     return parallelBatches
 end
 
+"""Sorts by [`get_delta`](@ref) and then returns list of parallel batches via [`calculate_shifts`](@ref)"""
 function gate_Shuffle(circuit)
     circuit = sort(circuit, by = x -> get_delta(x))
     calculate_shifts(circuit)
 end
 
+"""This function takes a circuit and returns a vector of [`qblock`](@ref) objects. These objects have values that useful for heuristics. This also sorts the circuit by ancillary qubit index."""
 function create_blocks(circuit)
     circuit = sort!(circuit, by = x -> x.q2)
     numDataBits = circuit[1].q2 - 1
@@ -151,7 +156,7 @@ function ancil_sort_h2(blockset)
     return order
 end
 
-# This was written with only CNOTS in mind. It's possible this function is mixing up the gates
+# This was written with only CNOTS in mind. It's possible (but very unlikely now) this function is mixing up the gates
 """Uses the order obtained by [`ancil_sort_h1`](@ref) or [`ancil_sort_h2`](@ref) to reindex the ancillary qubits in the provided circuit"""
 function ancil_reindex(circuit, order, numDataBits)
     new_circuit = Vector{QuantumClifford.AbstractOperation}();
@@ -275,7 +280,7 @@ function evaluate_code_decoder(code::Stabilizer, circuit,p; samples=10_000)
     1 - decoded / samples
 end
 
-# Uses encoding circuit to initialize
+"""Differs from [`evaluate_code_decoder`](@ref) by using an encoding circuit instead of of a parity matrix for initializing the state"""
 function evaluate_code_decoder_w_ecirc(code::Stabilizer, ecirc, circuit,p; samples=10_000)
     lookup_table = create_lookup_table(code)
 
@@ -319,7 +324,7 @@ function evaluate_code_decoder_w_ecirc(code::Stabilizer, ecirc, circuit,p; sampl
     1 - decoded / samples
 end
 
-#PauliFrame version of above
+"""PauliFrame version of [`evaluate_code_decoder_w_ecirc`](@ref)"""
 function evaluate_code_decoder_w_ecirc_pf(code::Stabilizer, ecirc, circuit,p; samples=10_000)
     lookup_table = create_lookup_table(code)
 
@@ -327,8 +332,7 @@ function evaluate_code_decoder_w_ecirc_pf(code::Stabilizer, ecirc, circuit,p; sa
     errors = [PauliError(i,p) for i in 1:qubits]
     fullcircuit = vcat(ecirc, errors, circuit)
 
-    # This is an assumption for now
-    regbits = constraints
+    regbits = constraints # This is an assumption for now
 
     frames = PauliFrame(samples, qubits+constraints, regbits)
     pftrajectories(frames, fullcircuit)
@@ -347,8 +351,8 @@ function evaluate_code_decoder_w_ecirc_pf(code::Stabilizer, ecirc, circuit,p; sa
     1 - decoded / samples
 end
 
-# This _shifts version applies errors not only at the beginning of the syndrome circuit but after each 2xn shifting AbstractOperation
-function evaluate_code_decoder_w_ecirc_shifts(code::Stabilizer, ecirc, circuit,p; samples=1000)
+"""This _shifts version of [`evaluate_code_decoder_w_ecirc`](@ref) applies errors not only at the beginning of the syndrome circuit but after each 2xn shifting AbstractOperation"""
+function evaluate_code_decoder_w_ecirc_shifts(code::Stabilizer, ecirc, circuit, p_init, p_shift; samples=1000)
     lookup_table = create_lookup_table(code)
 
     constraints, qubits = size(code)
@@ -366,7 +370,6 @@ function evaluate_code_decoder_w_ecirc_shifts(code::Stabilizer, ecirc, circuit,p
         for anc in 1:constraints
             error = error ⊗ P"I"
         end
-        # Apply that error to your physical system
         apply!(state, error)
     end
 
@@ -377,12 +380,17 @@ function evaluate_code_decoder_w_ecirc_shifts(code::Stabilizer, ecirc, circuit,p
     for sample in 1:samples
         state = copy(initial_state)
               
+        apply_error!(state, qubits, constraints, p_init)
+        first_shift = true
         # Non Measurements and shifts
         for subcircuit in non_mz
             # Shift!
-            apply_error!(state, qubits, constraints, p)
+            if !first_shift
+                apply_error!(state, qubits, constraints, p_shift)
+            end
             # Run parallel batch
             mctrajectory!(state, subcircuit)
+            first_shift = false
         end
        
         # Run measurements - should there be another set of errors before this?
@@ -407,6 +415,7 @@ function evaluate_code_decoder_w_ecirc_shifts(code::Stabilizer, ecirc, circuit,p
     1 - decoded / samples
 end
 
+"""Taken from the QEC Seminar notebook for plotting logical vs physical error"""
 function plot_code_performance(error_rates, post_ec_error_rates; title="")
     f = Figure(resolution=(500,300))
     ax = f[1,1] = Axis(f, xlabel="single (qu)bit error rate",title=title)
@@ -420,20 +429,53 @@ function plot_code_performance(error_rates, post_ec_error_rates; title="")
     f
 end
 
-# Function for generating 3plot - orignal circuit with shift errors, compiled with shift errors, and then compared to orignal  shift errors.
+"""Function for generating 3plot - orignal circuit with shift errors, compiled with shift errors, and then compared to orignal without shift errors"""
 function plot_code_performance_shift(error_rates, post_ec_error_rates_unsorted, post_ec_error_rates_shifts_sorted, original; title="")
-    #post_ec_error_rates = log.(post_ec_error_rates)
-    #error_rates = log.(error_rates)
     f = Figure(resolution=(900,700))
     ax = f[1,1] = Axis(f, xlabel="single (qu)bit error rate",title=title)
-    #ax.aspect = DataAspect()
-    #lim = max(error_rates[end],post_ec_error_rates[end])
-    #lines!([0,lim], [0,lim], label="single bit", color=:black)
+    lim = max(error_rates[end])
+    lines!([0,lim], [0,lim], label="single bit", color=:black)
     scatter!(error_rates, post_ec_error_rates_unsorted, label="Original circuit with shift errors", color=:red)
     scatter!(error_rates, post_ec_error_rates_shifts_sorted, label="Compiled circuit with shift errors", color=:blue)
     scatter!(error_rates, original, label="Only Initial errors", color=:black)
-    #xlims!(0,lim)
-    #ylims!(0,lim)
+  
+    f[1,2] = Legend(f, ax, "Error Rates")
+    f
+end
+
+"""Given a code, plots the compiled version and the original, varrying the probability of the error of the shifts"""
+function vary_shift_errors_plot(code, name=string(typeof(code)))
+    title = name*" Circuit w/ Encoding Circuit"
+    scirc = naive_syndrome_circuit(code)
+    ecirc = encoding_circuit(code)
+
+    error_rates = 0.000:0.00150:0.12
+    # Uncompiled errors 
+    post_ec_error_rates_s0 = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, scirc, p, 0) for p in error_rates]
+    post_ec_error_rates_s10 = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, scirc, p, p/10) for p in error_rates]
+    post_ec_error_rates_s100 = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, scirc, p, p) for p in error_rates]
+
+    # Compiled circuit
+    new_circuit = CircuitCompilation2xn.test(scirc)
+    compiled_post_ec_error_rates_s0 = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, new_circuit, p, 0) for p in error_rates]
+    compiled_post_ec_error_rates_s10 = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, new_circuit, p, p/10) for p in error_rates]
+    compiled_post_ec_error_rates_s100 = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, new_circuit, p, p) for p in error_rates]
+
+    f = Figure(resolution=(1100,900))
+    ax = f[1,1] = Axis(f, xlabel="single (qu)bit error rate",title=title)
+    lim = max(error_rates[end])
+    lines!([0,lim], [0,lim], label="single bit", color=:black)
+
+    # Uncompiled Plots
+    scatter!(error_rates, post_ec_error_rates_s0, label="Original circuit with no shift errors", color=:red, marker=:circle)
+    scatter!(error_rates, post_ec_error_rates_s10, label="Original circuit with shift errors = p/10", color=:red, marker=:utriangle)
+    scatter!(error_rates, post_ec_error_rates_s100, label="Original circuit with shift errors = p", color=:red, marker=:star8)
+
+    # Compiled Plots
+    scatter!(error_rates, compiled_post_ec_error_rates_s0, label="Compiled circuit with no shift errors", color=:blue, marker=:circle)
+    scatter!(error_rates, compiled_post_ec_error_rates_s10, label="Compiled circuit with shift errors = p/10", color=:blue, marker=:utriangle)
+    scatter!(error_rates, compiled_post_ec_error_rates_s100, label="Compiled circuit with shift errors = p", color=:blue, marker=:star8)
+    
     f[1,2] = Legend(f, ax, "Error Rates")
     f
 end

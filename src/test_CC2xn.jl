@@ -67,10 +67,10 @@ function encoding_plot_shifts(code, name=string(typeof(code)))
     circ = scirc
 
     error_rates = 0.000:0.00150:0.08
-    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, circ, p) for p in error_rates]
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, circ, p, p/10) for p in error_rates]
 
     new_circuit = CircuitCompilation2xn.test(scirc)
-    post_ec_error_rates_shifts = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, new_circuit, p) for p in error_rates]
+    post_ec_error_rates_shifts = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, new_circuit, p, p/10) for p in error_rates]
     original = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(parity_checks(code), ecirc, new_circuit, p) for p in error_rates]
     plot = CircuitCompilation2xn.plot_code_performance_shift(error_rates, post_ec_error_rates, post_ec_error_rates_shifts,original, title=name*" Circuit w/ Encoding Circuit")
     return plot
@@ -90,5 +90,8 @@ end
 #orig, new = pf_encoding_plot(Steane7())
 #orig, new = pf_encoding_plot(Shor9())
 
-plot_3 = encoding_plot_shifts(Steane7())
+#plot_3 = encoding_plot_shifts(Steane7())
 #plot_3 = encoding_plot_shifts(Shor9())
+
+#plot = CircuitCompilation2xn.vary_shift_errors_plot(Steane7())
+plot = CircuitCompilation2xn.vary_shift_errors_plot(Shor9())
