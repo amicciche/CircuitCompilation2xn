@@ -41,8 +41,8 @@ function test_full_reindex_plot(code, name=string(typeof(code)))
     new_ecirc = CircuitCompilation2xn.encoding_reindex(ecirc, data_order)
 
     error_rates = 0.000:0.0025:0.08
-    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc(parity_checks(code), new_ecirc, new_circuit, p) for p in error_rates]
-    f1 = CircuitCompilation2xn.plot_code_performance(error_rates, post_ec_error_rates,title="Original "*name*" Circuit w/ Encoding Circuit")
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc(parity_checks(code)[:,data_order], new_ecirc, new_circuit, p) for p in error_rates]
+    f1 = CircuitCompilation2xn.plot_code_performance(error_rates, post_ec_error_rates,title="Data + Anc Reindexed "*name*" w/ Encoding Circuit")
     return f1
 end
 
@@ -118,10 +118,10 @@ end
 #plot_3 = encoding_plot_shifts(Steane7())
 #plot_3 = encoding_plot_shifts(Shor9())
 
-#plot = CircuitCompilation2xn.vary_shift_errors_plot(Steane7())
+plot = CircuitCompilation2xn.vary_shift_errors_plot(Steane7())
 #plot = CircuitCompilation2xn.vary_shift_errors_plot(Shor9())
 
 #steane_e, steane_s = test_full_reindex(Steane7())
 #shor_e, shor_s = test_full_reindex(Shor9())
 
-test_full_reindex_plot(Steane7())
+#test_full_reindex_plot(Shor9())

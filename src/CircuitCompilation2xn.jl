@@ -238,19 +238,19 @@ end
 """Performs data and ancil reindexing based on a code. Returns both the new circuit, and the new order"""
 function data_ancil_reindex(scirc, total_qubits)
     # First compile the ancil qubits
-    newcirc, ancil_order = CircuitCompilation2xn.ancil_reindex(scirc)
+    newcirc, ancil_order = ancil_reindex(scirc)
 
     # Swap ancil and data qubits
-    inverted_new = CircuitCompilation2xn.inverter(newcirc, total_qubits)
+    inverted_new = inverter(newcirc, total_qubits)
 
     # Reindex again
-    new_inverted_new, data_order = CircuitCompilation2xn.ancil_reindex(inverted_new, true)
+    new_inverted_new, data_order = ancil_reindex(inverted_new, true)
 
     # Swap the data and ancil qubits again
-    data_reindex = CircuitCompilation2xn.inverter(new_inverted_new, total_qubits)
+    data_reindex = inverter(new_inverted_new, total_qubits)
 
     # Invert the order to match the swap back of the data and ancil qubits
-    data_order = CircuitCompilation2xn.invertOrder(data_order, total_qubits)
+    data_order = invertOrder(data_order, total_qubits)
 
     return data_reindex, data_order
 end
@@ -434,7 +434,7 @@ function evaluate_code_decoder_w_ecirc_pf(code::Stabilizer, ecirc, circuit,p; sa
 end
 
 """This _shifts version of [`evaluate_code_decoder_w_ecirc`](@ref) applies errors not only at the beginning of the syndrome circuit but after each 2xn shifting AbstractOperation"""
-function evaluate_code_decoder_w_ecirc_shifts(code::Stabilizer, ecirc, circuit, p_init, p_shift; samples=100)
+function evaluate_code_decoder_w_ecirc_shifts(code::Stabilizer, ecirc, circuit, p_init, p_shift; samples=5000)
     lookup_table = create_lookup_table(code)
 
     constraints, qubits = size(code)
@@ -530,18 +530,27 @@ function vary_shift_errors_plot(code, name=string(typeof(code)))
     title = name*" Circuit w/ Encoding Circuit"
     scirc = naive_syndrome_circuit(code)
     ecirc = encoding_circuit(code)
+    checks = parity_checks(code)
 
     error_rates = 0.000:0.00150:0.12
     # Uncompiled errors 
-    post_ec_error_rates_s0 = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, scirc, p, 0) for p in error_rates]
-    post_ec_error_rates_s10 = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, scirc, p, p/10) for p in error_rates]
-    post_ec_error_rates_s100 = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, scirc, p, p) for p in error_rates]
+    post_ec_error_rates_s0 = [evaluate_code_decoder_w_ecirc_shifts(checks, ecirc, scirc, p, 0) for p in error_rates]
+    post_ec_error_rates_s10 = [evaluate_code_decoder_w_ecirc_shifts(checks, ecirc, scirc, p, p/10) for p in error_rates]
+    post_ec_error_rates_s100 = [evaluate_code_decoder_w_ecirc_shifts(checks, ecirc, scirc, p, p) for p in error_rates]
 
-    # Compiled circuit
-    new_circuit, order = CircuitCompilation2xn.ancil_reindex(scirc)
-    compiled_post_ec_error_rates_s0 = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, new_circuit, p, 0) for p in error_rates]
-    compiled_post_ec_error_rates_s10 = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, new_circuit, p, p/10) for p in error_rates]
-    compiled_post_ec_error_rates_s100 = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, new_circuit, p, p) for p in error_rates]
+    # Anc Compiled circuit
+    new_circuit, order = ancil_reindex(scirc)
+    compiled_post_ec_error_rates_s0 = [evaluate_code_decoder_w_ecirc_shifts(checks, ecirc, new_circuit, p, 0) for p in error_rates]
+    compiled_post_ec_error_rates_s10 = [evaluate_code_decoder_w_ecirc_shifts(checks, ecirc, new_circuit, p, p/10) for p in error_rates]
+    compiled_post_ec_error_rates_s100 = [evaluate_code_decoder_w_ecirc_shifts(checks, ecirc, new_circuit, p, p) for p in error_rates]
+
+    # Data + Anc Compiled circuit
+    renewed_circuit, data_order = data_ancil_reindex(code)
+    renewed_ecirc = encoding_reindex(ecirc, data_order)
+    renewed_checks = checks[:,data_order]
+    full_compiled_post_ec_error_rates_s0 = [evaluate_code_decoder_w_ecirc_shifts(renewed_checks, renewed_ecirc, renewed_circuit, p, 0) for p in error_rates]
+    full_compiled_post_ec_error_rates_s10 = [evaluate_code_decoder_w_ecirc_shifts(renewed_checks, renewed_ecirc, renewed_circuit, p, p/10) for p in error_rates]
+    full_compiled_post_ec_error_rates_s100 = [evaluate_code_decoder_w_ecirc_shifts(renewed_checks, renewed_ecirc, renewed_circuit, p, p) for p in error_rates]
 
     f = Figure(resolution=(1100,900))
     ax = f[1,1] = Axis(f, xlabel="single (qu)bit error rate",title=title)
@@ -554,9 +563,14 @@ function vary_shift_errors_plot(code, name=string(typeof(code)))
     scatter!(error_rates, post_ec_error_rates_s100, label="Original circuit with shift errors = p", color=:red, marker=:star8)
 
     # Compiled Plots
-    scatter!(error_rates, compiled_post_ec_error_rates_s0, label="Compiled circuit with no shift errors", color=:blue, marker=:circle)
-    scatter!(error_rates, compiled_post_ec_error_rates_s10, label="Compiled circuit with shift errors = p/10", color=:blue, marker=:utriangle)
-    scatter!(error_rates, compiled_post_ec_error_rates_s100, label="Compiled circuit with shift errors = p", color=:blue, marker=:star8)
+    scatter!(error_rates, compiled_post_ec_error_rates_s0, label="Anc compiled circuit with no shift errors", color=:blue, marker=:circle)
+    scatter!(error_rates, compiled_post_ec_error_rates_s10, label="Anc compiled circuit with shift errors = p/10", color=:blue, marker=:utriangle)
+    scatter!(error_rates, compiled_post_ec_error_rates_s100, label="Anc compiled circuit with shift errors = p", color=:blue, marker=:star8)
+
+     # Compiled Plots
+     scatter!(error_rates, full_compiled_post_ec_error_rates_s0, label="Data + anc compiled circuit with no shift errors", color=:green, marker=:circle)
+     scatter!(error_rates, full_compiled_post_ec_error_rates_s10, label="Data + anc compiled circuit with shift errors = p/10", color=:green, marker=:utriangle)
+     scatter!(error_rates, full_compiled_post_ec_error_rates_s100, label="Data + anc compiled circuit with shift errors = p", color=:green, marker=:star8)
     
     f[1,2] = Legend(f, ax, "Error Rates")
     f
