@@ -1,7 +1,10 @@
+# TODO ASSUMPTION all two circuit gates will be written such that gate.q1 < gate.q2
+# in other words, all q2 are ancillary qubits and all q1 are data qubits.
+
 module CircuitCompilation2xn
 using QuantumClifford
 using CairoMakie
-using QuantumClifford.ECC: Steane7, Shor9, naive_syndrome_circuit, encoding_circuit, parity_checks, code_s, code_n
+using QuantumClifford.ECC: Steane7, Shor9, naive_syndrome_circuit, encoding_circuit, parity_checks, code_s, code_n, AbstractECC
 
 threeRepCode = [sCNOT(1,4),sCNOT(2,4),sCNOT(2,5),sCNOT(3,5)]
 k4_example = [sCNOT(1,4),sCNOT(3,4),sCNOT(2,5),sCNOT(2,4),sCNOT(2,7),sCNOT(3,6),sCNOT(3,5)]
@@ -33,8 +36,8 @@ end
 
 """First returns a circuit with the measurements removed, and then returns a circuit of just measurements"""
 function clifford_grouper(circuit)
-    non_mz = []
-    mz = []
+    non_mz = Vector{QuantumClifford.AbstractOperation}()
+    mz = Vector{QuantumClifford.AbstractOperation}()
     for i in eachindex(circuit)
         try 
             circuit[i].q1
@@ -47,14 +50,35 @@ function clifford_grouper(circuit)
     return non_mz, mz
 end
 
-"""Runs pipline on a circuit. If using a code, ECC.naive_syndrome_circuit should be run first"""
-function test(circuit=example_that_broke_h1)
+# HIGHLY EXPERIMENTAL
+"""Inverts the data and ancil qubits. Use this function a second time after reindexing to reindex the data qubits."""
+function inverter(circuit, total_qubits)
+    circ, measurement_circuit = clifford_grouper(circuit)
+    new_circuit = Vector{QuantumClifford.AbstractOperation}();
+    for gate in circ
+        gate_type = typeof(gate)
+        push!(new_circuit, gate_type(total_qubits + 1 - gate.q2, total_qubits + 1 - gate.q1))
+    end
+    for gate in measurement_circuit
+        gate_type = typeof(gate)
+        push!(new_circuit, gate_type(total_qubits + 1 - gate.qubit, gate.bit))
+    end
+    return new_circuit
+end
+
+"""Maps the ordering calculated on a circuit that was inverted [`inverter`](@ref) back to the orignal circuit."""
+function invertOrder(order, total_qubits)
+    for i in eachindex(order)
+        order[i] = total_qubits + 1 - order[i]
+    end
+    return reverse(order)
+end
+
+"""Runs pipline on a circuit. If using a code, ECC.naive_syndrome_circuit should be run first. Returns new circuit and ordering"""
+function ancil_reindex(circuit, inverted=false)
     circuit, measurement_circuit = clifford_grouper(circuit)
 
-    println("Caclulate shifts without any reordering")
-    print_batches(calculate_shifts(circuit))
-
-    println("\nCaclulate shifts on same code, after delta sorting the gates")
+    println("\nCaclulate shifts after delta sorting the gates")
     print_batches(gate_Shuffle(circuit))
 
     println("\nForm the block representation of the circuit")
@@ -81,17 +105,27 @@ function test(circuit=example_that_broke_h1)
     # Returns the best reordered circuit
     if length(h1_batches)<length(h2_batches)
         new_circuit = ancil_reindex(circuit, h1_order,numDataBits)
-        new_mz = ancil_reindex_mz(measurement_circuit,h1_order,numDataBits)
+        if !inverted
+            new_mz = ancil_reindex_mz(measurement_circuit,h1_order,numDataBits)
+        end
+        order = h1_order
     else 
         new_circuit = ancil_reindex(circuit, h2_order,numDataBits)
-        new_mz = ancil_reindex_mz(measurement_circuit,h2_order,numDataBits)
+        if !inverted
+            new_mz = ancil_reindex_mz(measurement_circuit,h2_order,numDataBits)
+        end
+        order = h2_order
     end
-    return vcat(new_circuit, new_mz)
+
+    if inverted
+        new_mz = measurement_circuit
+    end
+    return vcat(new_circuit, new_mz), order
 end
 
 """Delta of a gate is the difference in index of the target and control bit"""
 function get_delta(gate)
-    return gate.q2-gate.q1
+    return abs(gate.q2-gate.q1)
 end
  
 """Length of the returnable is the number of shifts. Splits a circuit into subcircuits that must be run in sequence due to the 2xn hardware constraints"""
@@ -115,6 +149,7 @@ function gate_Shuffle(circuit)
     calculate_shifts(circuit)
 end
 
+# TODO this function seems fragile - could be written more robustly.
 """This function takes a circuit and returns a vector of [`qblock`](@ref) objects. These objects have values that useful for heuristics. This also sorts the circuit by ancillary qubit index."""
 function create_blocks(circuit)
     circuit = sort!(circuit, by = x -> x.q2)
@@ -178,8 +213,50 @@ function ancil_reindex_mz(mz_circuit, order, numDataBits)
     return new_circuit
 end
 
+# This function currently MIGHT have limited functionality on the gates it can handle.
+"""Takes an encoding circuit, and reinexes based on the order"""
+function encoding_reindex(ecirc, data_order)
+    new_ecirc = Vector{QuantumClifford.AbstractOperation}();
+    for gate in ecirc
+        gate_type = typeof(gate)
+        if length(fieldnames(gate_type))==1
+            push!(new_ecirc, gate_type(indexin(gate.q, data_order)[1]))
+        else
+            push!(new_ecirc, gate_type(indexin(gate.q1, data_order)[1], indexin(gate.q2, data_order)[1]))
+        end
+    end
+    return new_ecirc
+end
+
+"""[`data_ancil_reindex`](@ref)"""
+function data_ancil_reindex(code::AbstractECC)
+    total_qubits = code_s(code)+code_n(code)
+    scirc = naive_syndrome_circuit(code)
+    return data_ancil_reindex(scirc, total_qubits)
+end
+
+"""Performs data and ancil reindexing based on a code. Returns both the new circuit, and the new order"""
+function data_ancil_reindex(scirc, total_qubits)
+    # First compile the ancil qubits
+    newcirc, ancil_order = CircuitCompilation2xn.ancil_reindex(scirc)
+
+    # Swap ancil and data qubits
+    inverted_new = CircuitCompilation2xn.inverter(newcirc, total_qubits)
+
+    # Reindex again
+    new_inverted_new, data_order = CircuitCompilation2xn.ancil_reindex(inverted_new, true)
+
+    # Swap the data and ancil qubits again
+    data_reindex = CircuitCompilation2xn.inverter(new_inverted_new, total_qubits)
+
+    # Invert the order to match the swap back of the data and ancil qubits
+    data_order = CircuitCompilation2xn.invertOrder(data_order, total_qubits)
+
+    return data_reindex, data_order
+end
+
 """Inserts all possible 1 qubit Pauli errors on two circuits data qubits, after encoding. The compares them. The returned vector is for each error, how many discrepancies were caused."""
-function evaluate(oldcirc, newcirc, ecirc, dataqubits, ancqubits, regbits)
+function evaluate(oldcirc, newcirc, ecirc, dataqubits, ancqubits, regbits, new_ecirc=ecirc, order=collect(1:dataqubits))
     samples = 50
 
     diff = []
@@ -188,7 +265,12 @@ function evaluate(oldcirc, newcirc, ecirc, dataqubits, ancqubits, regbits)
         for qubit in 1:dataqubits
             errors = gate(qubit)
             fullcirc_old = vcat(ecirc,errors,oldcirc)
-            fullcirc_new = vcat(ecirc,errors,newcirc)
+
+            # needed for comparing against data qubit reindexing
+            affected_bit = indexin(qubit, order)[1]
+            errors = gate(affected_bit)
+            fullcirc_new = vcat(new_ecirc,errors,newcirc)
+
             result_old = []
             for i in 1:samples
                 bits = zeros(Bool,regbits)
@@ -352,7 +434,7 @@ function evaluate_code_decoder_w_ecirc_pf(code::Stabilizer, ecirc, circuit,p; sa
 end
 
 """This _shifts version of [`evaluate_code_decoder_w_ecirc`](@ref) applies errors not only at the beginning of the syndrome circuit but after each 2xn shifting AbstractOperation"""
-function evaluate_code_decoder_w_ecirc_shifts(code::Stabilizer, ecirc, circuit, p_init, p_shift; samples=1000)
+function evaluate_code_decoder_w_ecirc_shifts(code::Stabilizer, ecirc, circuit, p_init, p_shift; samples=100)
     lookup_table = create_lookup_table(code)
 
     constraints, qubits = size(code)
@@ -456,7 +538,7 @@ function vary_shift_errors_plot(code, name=string(typeof(code)))
     post_ec_error_rates_s100 = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, scirc, p, p) for p in error_rates]
 
     # Compiled circuit
-    new_circuit = CircuitCompilation2xn.test(scirc)
+    new_circuit, order = CircuitCompilation2xn.ancil_reindex(scirc)
     compiled_post_ec_error_rates_s0 = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, new_circuit, p, 0) for p in error_rates]
     compiled_post_ec_error_rates_s10 = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, new_circuit, p, p/10) for p in error_rates]
     compiled_post_ec_error_rates_s100 = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, new_circuit, p, p) for p in error_rates]
