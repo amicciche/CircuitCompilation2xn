@@ -4,7 +4,7 @@
 module CircuitCompilation2xn
 using QuantumClifford
 using CairoMakie
-using QuantumClifford.ECC: Steane7, Shor9, naive_syndrome_circuit, encoding_circuit, parity_checks, code_s, code_n, AbstractECC
+using QuantumClifford.ECC: Steane7, Shor9, naive_syndrome_circuit, encoding_circuit, parity_checks, code_s, code_n, AbstractECC, faults_matrix
 
 threeRepCode = [sCNOT(1,4),sCNOT(2,4),sCNOT(2,5),sCNOT(3,5)]
 k4_example = [sCNOT(1,4),sCNOT(3,4),sCNOT(2,5),sCNOT(2,4),sCNOT(2,7),sCNOT(3,6),sCNOT(3,5)]
@@ -26,12 +26,13 @@ end
 function print_batches(circuit_batches)
     i = 1
     for batch in circuit_batches
-        println("Shift: ", i)
+        #println("Shift: ", i)
         for gate in batch
-            println(typeof(gate)," from ", gate.q1, " to ", gate.q2)
+            #println(typeof(gate)," from ", gate.q1, " to ", gate.q2)
         end
         i += 1
     end
+    println(i-1)
 end
 
 """First returns a circuit with the measurements removed, and then returns a circuit of just measurements"""
@@ -78,29 +79,32 @@ end
 function ancil_reindex(circuit, inverted=false)
     circuit, measurement_circuit = clifford_grouper(circuit)
 
-    println("\nCaclulate shifts after delta sorting the gates")
-    print_batches(gate_Shuffle(circuit))
+    #println("\nCaclulate shifts after delta sorting the gates")
+    #println("Total shifts: ", length(gate_Shuffle(circuit)))
+    #print_batches(gate_Shuffle(circuit))
+    gate_Shuffle(circuit)
 
-    println("\nForm the block representation of the circuit")
+    #println("\nForm the block representation of the circuit")
     blocks = create_blocks(circuit)
-    for block in blocks
-        println(block)
-    end
+    #for block in blocks
+    #    println(block)
+    #end
+    # This calculation of number of data qubits might be wrong
     numDataBits = circuit[1].q2 - 1 # this calulation uses the sorting done by create_blocks
 
     h1_order = ancil_sort_h1(blocks)
-    println("\nOrder after running heuristic 1\n", h1_order)
+    #println("\nOrder after running heuristic 1\n", h1_order)
 
-    println("\nShifts on delta sorted reordered h1 circuit")
+    #println("\nShifts on delta sorted reordered h1 circuit")
     h1_batches = gate_Shuffle(ancil_reindex(circuit,h1_order,numDataBits))
-    print_batches(h1_batches)
+    #print_batches(h1_batches)
 
     h2_order = ancil_sort_h2(blocks)
-    println("\nOrder after running heuristic 2\n", h2_order)
+    #println("\nOrder after running heuristic 2\n", h2_order)
 
-    println("\nShifts on delta sorted reordered h2 circuit")
+    #println("\nShifts on delta sorted reordered h2 circuit")
     h2_batches = gate_Shuffle(ancil_reindex(circuit,h2_order, numDataBits))
-    print_batches(h2_batches)
+    #print_batches(h2_batches)
 
     # Returns the best reordered circuit
     if length(h1_batches)<length(h2_batches)
@@ -127,8 +131,10 @@ end
 function get_delta(gate)
     return abs(gate.q2-gate.q1)
 end
- 
-"""Length of the returnable is the number of shifts. Splits a circuit into subcircuits that must be run in sequence due to the 2xn hardware constraints"""
+
+"""Length of the returnable is the number of shifts. Splits a circuit into subcircuits that must be run in sequence due to the 2xn hardware constraints.
+This function can't take measurement gates,and maybe only takes two qubit gates."""
+# TODO change get_delta to return a delta of 0 or some error handling to account for the current limitation
 function calculate_shifts(circuit)
     parallelBatches = Vector{AbstractTwoQubitOperator}[]
     currentDelta = -1
@@ -406,31 +412,61 @@ function evaluate_code_decoder_w_ecirc(code::Stabilizer, ecirc, circuit,p; sampl
     1 - decoded / samples
 end
 
+# TODO account for reording. Logical operator checks are dervived from the original code
+# TODO TODO CURENTLY and always was BROKEN
 """PauliFrame version of [`evaluate_code_decoder_w_ecirc`](@ref)"""
-function evaluate_code_decoder_w_ecirc_pf(code::Stabilizer, ecirc, circuit,p; samples=10_000)
-    lookup_table = create_lookup_table(code)
+function evaluate_code_decoder_w_ecirc_pf(code::AbstractECC, ecirc, scirc,p; nframes=10)
+    circuit = copy(scirc)
+    checks = parity_checks(code)
+    lookup_table = create_lookup_table(checks)
+    O = faults_matrix(code)
+    
+    constraints, qubits = size(checks)
+    regbits = constraints # This is an assumption for now
 
-    constraints, qubits = size(code)
+    md = MixedDestabilizer(code)
+    logviews = [ logicalxview(md); logicalzview(md)]
+    logcirc = naive_syndrome_circuit(logviews)
+    
+    #println(logcirc)
+    for gate in logcirc
+        type = typeof(gate)
+        if type == sMZ
+            push!(circuit, sMZ(gate.qubit+regbits, gate.bit+regbits))
+        else 
+            push!(circuit, type(gate.q1, gate.q2+regbits))
+        end
+    end
+
     errors = [PauliError(i,p) for i in 1:qubits]
     fullcircuit = vcat(ecirc, errors, circuit)
 
-    regbits = constraints # This is an assumption for now
-
-    frames = PauliFrame(samples, qubits+constraints, regbits)
+    frames = PauliFrame(nframes, qubits+constraints+2, regbits+2)
     pftrajectories(frames, fullcircuit)
-    syndromes = pfmeasurements(frames)
+    syndromes = pfmeasurements(frames)[:, 1:regbits]
+    logicalSyndromes = pfmeasurements(frames)[:, regbits+1:regbits+2]
+    println(syndromes)
+    println(logicalSyndromes)
 
     decoded = 0
-    for row in eachrow(syndromes)
+    for i in 1:nframes
+        row = syndromes[i,:]
         guess = get(lookup_table,row,nothing)
         if isnothing(guess)
             continue
         else
-            decoded += 1
+            result = O * stab_to_gf2(guess)
+            if result == logicalSyndromes[i,:]
+                decoded += 1
+            else
+                #println("Not decoded", result, logicalSyndromes[i,:])
+                #println(logviews)
+            end
         end
     end
     
-    1 - decoded / samples
+    fullcircuit, frames
+    #1 - decoded / nframes
 end
 
 """This _shifts version of [`evaluate_code_decoder_w_ecirc`](@ref) applies errors not only at the beginning of the syndrome circuit but after each 2xn shifting AbstractOperation"""
