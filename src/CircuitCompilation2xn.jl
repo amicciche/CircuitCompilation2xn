@@ -51,7 +51,6 @@ function clifford_grouper(circuit)
     return non_mz, mz
 end
 
-# HIGHLY EXPERIMENTAL
 """Inverts the data and ancil qubits. Use this function a second time after reindexing to reindex the data qubits."""
 function inverter(circuit, total_qubits)
     circ, measurement_circuit = clifford_grouper(circuit)
@@ -78,43 +77,28 @@ end
 """Runs pipline on a circuit. If using a code, ECC.naive_syndrome_circuit should be run first. Returns new circuit and ordering"""
 function ancil_reindex(circuit, inverted=false)
     circuit, measurement_circuit = clifford_grouper(circuit)
-
-    #println("\nCaclulate shifts after delta sorting the gates")
-    #println("Total shifts: ", length(gate_Shuffle(circuit)))
-    #print_batches(gate_Shuffle(circuit))
-    gate_Shuffle(circuit)
-
-    #println("\nForm the block representation of the circuit")
     blocks = create_blocks(circuit)
-    #for block in blocks
-    #    println(block)
-    #end
+
     # This calculation of number of data qubits might be wrong
     numDataBits = circuit[1].q2 - 1 # this calulation uses the sorting done by create_blocks
 
     h1_order = ancil_sort_h1(blocks)
-    #println("\nOrder after running heuristic 1\n", h1_order)
-
-    #println("\nShifts on delta sorted reordered h1 circuit")
-    h1_batches = gate_Shuffle(ancil_reindex(circuit,h1_order,numDataBits))
-    #print_batches(h1_batches)
+    h1_circuit = ancil_reindex(circuit,h1_order,numDataBits)
+    h1_batches = gate_Shuffle(h1_circuit)
 
     h2_order = ancil_sort_h2(blocks)
-    #println("\nOrder after running heuristic 2\n", h2_order)
-
-    #println("\nShifts on delta sorted reordered h2 circuit")
-    h2_batches = gate_Shuffle(ancil_reindex(circuit,h2_order, numDataBits))
-    #print_batches(h2_batches)
+    h2_circuit = ancil_reindex(circuit,h2_order, numDataBits)
+    h2_batches = gate_Shuffle(h2_circuit)
 
     # Returns the best reordered circuit
     if length(h1_batches)<length(h2_batches)
-        new_circuit = ancil_reindex(circuit, h1_order,numDataBits)
+        new_circuit = h1_circuit
         if !inverted
             new_mz = ancil_reindex_mz(measurement_circuit,h1_order,numDataBits)
         end
         order = h1_order
     else 
-        new_circuit = ancil_reindex(circuit, h2_order,numDataBits)
+        new_circuit = h2_circuit
         if !inverted
             new_mz = ancil_reindex_mz(measurement_circuit,h2_order,numDataBits)
         end
@@ -335,7 +319,7 @@ end
 
 """For a given physical bit-flip error rate, parity check matrix, and a lookup table,
 estimate logical error rate, taking into account noisy circuits."""
-function evaluate_code_decoder(code::Stabilizer, circuit,p; samples=10_000)
+function evaluate_code_decoder(code::Stabilizer, circuit,p; samples=1_000)
     lookup_table = create_lookup_table(code)
 
     constraints, qubits = size(code)
@@ -369,7 +353,7 @@ function evaluate_code_decoder(code::Stabilizer, circuit,p; samples=10_000)
 end
 
 """Differs from [`evaluate_code_decoder`](@ref) by using an encoding circuit instead of of a parity matrix for initializing the state"""
-function evaluate_code_decoder_w_ecirc(code::Stabilizer, ecirc, circuit,p; samples=10_000)
+function evaluate_code_decoder_w_ecirc(code::Stabilizer, ecirc, circuit,p; samples=1_000)
     lookup_table = create_lookup_table(code)
 
     constraints, qubits = size(code)

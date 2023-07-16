@@ -5,6 +5,7 @@ using Quantikz
 using CairoMakie
 using Random
 using Statistics
+using Distributions
 
 function test_code(code)
     ecirc = encoding_circuit(code)
@@ -99,7 +100,7 @@ function encoding_plot_shifts(code, name=string(typeof(code)))
 
     new_circuit, order = CircuitCompilation2xn.ancil_reindex(scirc)
     post_ec_error_rates_shifts = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, new_circuit, p, p/10) for p in error_rates]
-    original = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(parity_checks(code), ecirc, new_circuit, p) for p in error_rates]
+    original = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_shifts(parity_checks(code), ecirc, new_circuit, p, 0) for p in error_rates]
     plot = CircuitCompilation2xn.plot_code_performance_shift(error_rates, post_ec_error_rates, post_ec_error_rates_shifts,original, title=name*" Circuit w/ Encoding Circuit")
     return plot
 end
@@ -108,7 +109,7 @@ function generate_LDPC_matrix(n, k, w_r)
     function generate_row(n,w_r)
         onePart = ones(Bool, w_r)
         zeroPart = zeros(Bool, n - w_r)
-        return shuffle(vcat(onePart,zeroPart))'
+        return shuffle(append!(onePart,zeroPart))'
     end
     mat = generate_row(n, w_r-1)
     
@@ -134,14 +135,9 @@ function generate_LDPC_code(n,k,w_r)
 
     # Throw out matrices with low column weights
     timeout = 0
-    while check(matrix)
+    while check(matrix) && timeout<100
         matrix = generate_LDPC_matrix(n, k, w_r)
         timeout += 1
-        if timeout >10_000
-            println("WARNING: ROW WEIGHT WAS TOO SMALL - INCREASED FROM", w_r, " TO", w_r+1)
-            w_r+=1
-            timeout = 0
-        end
     end
     return matrix
 end
@@ -151,14 +147,14 @@ function test_LDPC_shift_reduction(n,k,w_r, samples=5)
     gate_shuffling_shifts = []
     final_shifts = []
     for i in 1:samples
-        matrix  = generate_LDPC_code(n,k,w_r)
+        #matrix  = generate_LDPC_code(n,k,w_r)
+        matrix = rand(Bernoulli(w_r/n), n-k, n) #using this as an approximation
         stab = Stabilizer(zeros(Bool,n-k, n), matrix)
         scirc = naive_syndrome_circuit(stab)
 
         circuit_wo_mz, measurement_circuit = CircuitCompilation2xn.clifford_grouper(scirc)
         push!(raw_shifts, length(CircuitCompilation2xn.calculate_shifts(circuit_wo_mz)))
         
-        circuit_wo_mz, measurement_circuit = CircuitCompilation2xn.clifford_grouper(scirc)
         push!(gate_shuffling_shifts, length((CircuitCompilation2xn.gate_Shuffle(circuit_wo_mz))))
         
         # TODO confirm that data ancil reindexing works as expected for these generated LDPC codes
@@ -193,8 +189,8 @@ end
 #plot = CircuitCompilation2xn.vary_shift_errors_plot(Steane7())
 #plot = CircuitCompilation2xn.vary_shift_errors_plot(Shor9())
 
-#steane_e, steane_s = test_full_reindex(Steane7())
-#shor_e, shor_s = test_full_reindex(Shor9())
+steane_e, steane_s = test_full_reindex(Steane7())
+shor_e, shor_s = test_full_reindex(Shor9())
 
 #test_full_reindex_plot(Shor9())
 function plot_LDPC_shift_reduction(n=100)
@@ -212,12 +208,12 @@ function plot_LDPC_shift_reduction(n=100)
     c = reduce(hcat, c)
 
     f = Figure(resolution=(1100,900))
-    ax = f[1,1] = Axis(f, xlabel="Row Weights", ylabel="Number of Shifts to Run on 2xn", title="N=1000 Random Classical LDPC Code Shift Reductions")
+    ax = f[1,1] = Axis(f, xlabel="Row Weights", ylabel="Number of Shifts to Run on 2xn", title="N=10,000 Random Classical LDPC Code Shift Reductions")
 
     # Uncompiled Plots
-    lines!(row_weights, a[1,:], label="No compilation; k = 5%", color=:red, linestyle = nothing)
-    lines!(row_weights, b[1,:], label="No compilation; k = 10%", color=:red, linestyle = :dot)
-    lines!(row_weights, c[1,:], label="No compilation; k = 20%", color=:red, linestyle = :dash)
+    #lines!(row_weights, a[1,:], label="No compilation; k = 5%", color=:red, linestyle = nothing)
+    #lines!(row_weights, b[1,:], label="No compilation; k = 10%", color=:red, linestyle = :dot)
+    #lines!(row_weights, c[1,:], label="No compilation; k = 20%", color=:red, linestyle = :dash)
 
     # Compiled Plots
     lines!(row_weights, a[2,:], label="Gate Shuffling; k = 5%", color=:blue, linestyle = nothing)
@@ -234,4 +230,4 @@ function plot_LDPC_shift_reduction(n=100)
     return f
 end
 
-a = plot_LDPC_shift_reduction()
+#a = plot_LDPC_shift_reduction()
