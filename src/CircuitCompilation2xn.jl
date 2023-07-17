@@ -32,7 +32,7 @@ function print_batches(circuit_batches)
         end
         i += 1
     end
-    println(i-1)
+    println("Total shifts:", i-1)
 end
 
 """First returns a circuit with the measurements removed, and then returns a circuit of just measurements"""
@@ -68,39 +68,37 @@ end
 
 """Maps the ordering calculated on a circuit that was inverted [`inverter`](@ref) back to the orignal circuit."""
 function invertOrder(order, total_qubits)
-    for i in eachindex(order)
-        order[i] = total_qubits + 1 - order[i]
+    invertedOrder = Dict()
+    for (key,value) in order
+        invertedOrder[total_qubits + 1 - key] = total_qubits + 1 - value
     end
-    return reverse(order)
+    return invertedOrder
 end
 
 """Runs pipline on a circuit. If using a code, ECC.naive_syndrome_circuit should be run first. Returns new circuit and ordering"""
-function ancil_reindex(circuit, inverted=false)
+function ancil_reindex_pipeline(circuit, inverted=false)
     circuit, measurement_circuit = clifford_grouper(circuit)
     blocks = create_blocks(circuit)
 
-    # This calculation of number of data qubits might be wrong
-    numDataBits = circuit[1].q2 - 1 # this calulation uses the sorting done by create_blocks
-
     h1_order = ancil_sort_h1(blocks)
-    h1_circuit = ancil_reindex(circuit,h1_order,numDataBits)
+    h1_circuit = ancil_reindex(circuit, h1_order)
     h1_batches = gate_Shuffle(h1_circuit)
 
     h2_order = ancil_sort_h2(blocks)
-    h2_circuit = ancil_reindex(circuit,h2_order, numDataBits)
+    h2_circuit = ancil_reindex(circuit, h2_order)
     h2_batches = gate_Shuffle(h2_circuit)
 
     # Returns the best reordered circuit
     if length(h1_batches)<length(h2_batches)
         new_circuit = h1_circuit
         if !inverted
-            new_mz = ancil_reindex_mz(measurement_circuit,h1_order,numDataBits)
+            new_mz = ancil_reindex_mz(measurement_circuit,h1_order)
         end
         order = h1_order
     else 
         new_circuit = h2_circuit
         if !inverted
-            new_mz = ancil_reindex_mz(measurement_circuit,h2_order,numDataBits)
+            new_mz = ancil_reindex_mz(measurement_circuit,h2_order)
         end
         order = h2_order
     end
@@ -162,57 +160,75 @@ function create_blocks(circuit)
 end
 
 """Sorts first by ghost length of the block visualation and secondarily by the total length"""
-function ancil_sort_h1(blockset)
+function ancil_sort_h1(blockset, startAncil=nothing)
+    if isnothing(startAncil)
+        sort!(blockset, by = x -> (x.ancil), rev=false)
+        currentAncil = blockset[1].ancil
+    else
+        currentAncil = startAncil
+    end
+
     sort!(blockset, by = x -> (x.ghostlength, x.length), rev=true)
-    order = []
+    order = Dict()
+    
     for block in blockset
-        push!(order, block.ancil)
+        order[block.ancil] = currentAncil
+        currentAncil += 1
     end
     return order
 end
 
 """Sorts first by total length of the block visualation and secondarily by the ghost length"""
-function ancil_sort_h2(blockset)
-    sort!(blockset, by = x -> ( x.length,x.ghostlength), rev=true)
-    order = []
+function ancil_sort_h2(blockset, startAncil=nothing)
+    if isnothing(startAncil)
+        sort!(blockset, by = x -> (x.ancil), rev=false)
+        currentAncil = blockset[1].ancil
+    else
+        currentAncil = startAncil
+    end
+
+    sort!(blockset, by = x -> (x.length, x.ghostlength), rev=true)
+    order = Dict()
+    
     for block in blockset
-        push!(order, block.ancil)
+        order[block.ancil] = currentAncil
+        currentAncil += 1
     end
     return order
 end
 
 # This was written with only CNOTS in mind. It's possible (but very unlikely now) this function is mixing up the gates
 """Uses the order obtained by [`ancil_sort_h1`](@ref) or [`ancil_sort_h2`](@ref) to reindex the ancillary qubits in the provided circuit"""
-function ancil_reindex(circuit, order, numDataBits)
+function ancil_reindex(circuit, order::Dict)
     new_circuit = Vector{QuantumClifford.AbstractOperation}();
     for gate in circuit
         gate_type = typeof(gate)
-        push!(new_circuit, gate_type(gate.q1, indexin(gate.q2, order)[1]+numDataBits))
+        push!(new_circuit, gate_type(gate.q1, order[gate.q2]))
     end
     sort!(new_circuit, by = x -> get_delta(x))
     return new_circuit
 end
 
 """Reindexes a circuit of just measurements, based on an order obtained by [`ancil_sort_h1`](@ref) or [`ancil_sort_h2`](@ref)"""
-function ancil_reindex_mz(mz_circuit, order, numDataBits)
+function ancil_reindex_mz(mz_circuit, order::Dict)
     new_circuit = Vector{QuantumClifford.AbstractOperation}();
     for gate in mz_circuit
         gate_type = typeof(gate)
-        push!(new_circuit, gate_type(indexin(gate.qubit, order)[1]+numDataBits, gate.bit))
+        push!(new_circuit, gate_type(order[gate.qubit], gate.bit))
     end
     return new_circuit
 end
 
 # This function currently MIGHT have limited functionality on the gates it can handle.
 """Takes an encoding circuit, and reinexes based on the order"""
-function encoding_reindex(ecirc, data_order)
+function encoding_reindex(ecirc, data_order::Dict)
     new_ecirc = Vector{QuantumClifford.AbstractOperation}();
     for gate in ecirc
         gate_type = typeof(gate)
         if length(fieldnames(gate_type))==1
-            push!(new_ecirc, gate_type(indexin(gate.q, data_order)[1]))
+            push!(new_ecirc, gate_type(data_order[gate.q]))
         else
-            push!(new_ecirc, gate_type(indexin(gate.q1, data_order)[1], indexin(gate.q2, data_order)[1]))
+            push!(new_ecirc, gate_type(data_order[gate.q1], data_order[gate.q2]))
         end
     end
     return new_ecirc
@@ -228,13 +244,13 @@ end
 """Performs data and ancil reindexing based on a code. Returns both the new circuit, and the new order"""
 function data_ancil_reindex(scirc, total_qubits)
     # First compile the ancil qubits
-    newcirc, ancil_order = ancil_reindex(scirc)
+    newcirc, ancil_order = ancil_reindex_pipeline(scirc)
 
     # Swap ancil and data qubits
     inverted_new = inverter(newcirc, total_qubits)
 
     # Reindex again
-    new_inverted_new, data_order = ancil_reindex(inverted_new, true)
+    new_inverted_new, data_order = ancil_reindex_pipeline(inverted_new, true)
 
     # Swap the data and ancil qubits again
     data_reindex = inverter(new_inverted_new, total_qubits)
@@ -246,9 +262,8 @@ function data_ancil_reindex(scirc, total_qubits)
 end
 
 """Inserts all possible 1 qubit Pauli errors on two circuits data qubits, after encoding. The compares them. The returned vector is for each error, how many discrepancies were caused."""
-function evaluate(oldcirc, newcirc, ecirc, dataqubits, ancqubits, regbits, new_ecirc=ecirc, order=collect(1:dataqubits))
+function evaluate(oldcirc, newcirc, ecirc, dataqubits, ancqubits, regbits, new_ecirc=ecirc, order=nothing)
     samples = 50
-
     diff = []
     types = [sX, sY, sZ]
     for gate in types
@@ -257,7 +272,11 @@ function evaluate(oldcirc, newcirc, ecirc, dataqubits, ancqubits, regbits, new_e
             fullcirc_old = vcat(ecirc,errors,oldcirc)
 
             # needed for comparing against data qubit reindexing
-            affected_bit = indexin(qubit, order)[1]
+            if isnothing(order)
+                affected_bit = qubit
+            else
+                affected_bit = order[qubit]
+            end
             errors = gate(affected_bit)
             fullcirc_new = vcat(new_ecirc,errors,newcirc)
 
@@ -353,7 +372,7 @@ function evaluate_code_decoder(code::Stabilizer, circuit,p; samples=1_000)
 end
 
 """Differs from [`evaluate_code_decoder`](@ref) by using an encoding circuit instead of of a parity matrix for initializing the state"""
-function evaluate_code_decoder_w_ecirc(code::Stabilizer, ecirc, circuit,p; samples=1_000)
+function evaluate_code_decoder_w_ecirc(code::Stabilizer, ecirc, circuit,p; samples=10_000)
     lookup_table = create_lookup_table(code)
 
     constraints, qubits = size(code)
@@ -454,7 +473,7 @@ function evaluate_code_decoder_w_ecirc_pf(code::AbstractECC, ecirc, scirc,p; nfr
 end
 
 """This _shifts version of [`evaluate_code_decoder_w_ecirc`](@ref) applies errors not only at the beginning of the syndrome circuit but after each 2xn shifting AbstractOperation"""
-function evaluate_code_decoder_w_ecirc_shifts(code::Stabilizer, ecirc, circuit, p_init, p_shift; samples=5000)
+function evaluate_code_decoder_w_ecirc_shifts(code::Stabilizer, ecirc, circuit, p_init, p_shift; samples=1000)
     lookup_table = create_lookup_table(code)
 
     constraints, qubits = size(code)
@@ -559,7 +578,7 @@ function vary_shift_errors_plot(code, name=string(typeof(code)))
     post_ec_error_rates_s100 = [evaluate_code_decoder_w_ecirc_shifts(checks, ecirc, scirc, p, p) for p in error_rates]
 
     # Anc Compiled circuit
-    new_circuit, order = ancil_reindex(scirc)
+    new_circuit, order = ancil_reindex_pipeline(scirc)
     compiled_post_ec_error_rates_s0 = [evaluate_code_decoder_w_ecirc_shifts(checks, ecirc, new_circuit, p, 0) for p in error_rates]
     compiled_post_ec_error_rates_s10 = [evaluate_code_decoder_w_ecirc_shifts(checks, ecirc, new_circuit, p, p/10) for p in error_rates]
     compiled_post_ec_error_rates_s100 = [evaluate_code_decoder_w_ecirc_shifts(checks, ecirc, new_circuit, p, p) for p in error_rates]
@@ -567,7 +586,10 @@ function vary_shift_errors_plot(code, name=string(typeof(code)))
     # Data + Anc Compiled circuit
     renewed_circuit, data_order = data_ancil_reindex(code)
     renewed_ecirc = encoding_reindex(ecirc, data_order)
-    renewed_checks = checks[:,data_order]
+    dataQubits = size(checks)[2]
+    reverse_dict = Dict(value => key for (key, value) in data_order)
+    parity_reindex = [reverse_dict[i] for i in collect(1:dataQubits)]
+    renewed_checks = checks[:,parity_reindex] 
     full_compiled_post_ec_error_rates_s0 = [evaluate_code_decoder_w_ecirc_shifts(renewed_checks, renewed_ecirc, renewed_circuit, p, 0) for p in error_rates]
     full_compiled_post_ec_error_rates_s10 = [evaluate_code_decoder_w_ecirc_shifts(renewed_checks, renewed_ecirc, renewed_circuit, p, p/10) for p in error_rates]
     full_compiled_post_ec_error_rates_s100 = [evaluate_code_decoder_w_ecirc_shifts(renewed_checks, renewed_ecirc, renewed_circuit, p, p) for p in error_rates]
