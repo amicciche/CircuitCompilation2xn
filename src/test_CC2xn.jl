@@ -34,23 +34,6 @@ function test_full_reindex(code)
     return new_ecirc, new_circuit
 end
 
-function better_test_full_reindex(code)
-    ecirc = encoding_circuit(code)
-    mcirc = naive_syndrome_circuit(code)
-
-    new_circuit, data_order = CircuitCompilation2xn.better_data_ancil_reindex(code)
-
-    # Reindex encoding circuit
-    new_ecirc = CircuitCompilation2xn.better_encoding_reindex(ecirc, data_order)
-
-    diff = CircuitCompilation2xn.better_evaluate(mcirc, new_circuit, ecirc, code_n(code), code_s(code), code_s(code), new_ecirc, data_order)
-
-    println("\nNumber of discrepancies between the reordered circuit and the original over all possible 1 qubit Pauli errors inserted right after the encoding circuit:")
-    println(sum(diff))
-    return new_ecirc, new_circuit
-end
-
-
 function test_full_reindex_plot(code, name=string(typeof(code)))
     ecirc = encoding_circuit(code)
     new_circuit, data_order = CircuitCompilation2xn.data_ancil_reindex(code)
@@ -59,20 +42,11 @@ function test_full_reindex_plot(code, name=string(typeof(code)))
     new_ecirc = CircuitCompilation2xn.encoding_reindex(ecirc, data_order)
 
     error_rates = 0.000:0.0025:0.08
-    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc(parity_checks(code)[:,data_order], new_ecirc, new_circuit, p) for p in error_rates]
-    f1 = CircuitCompilation2xn.plot_code_performance(error_rates, post_ec_error_rates,title="Data + Anc Reindexed "*name*" w/ Encoding Circuit")
-    return f1
-end
-
-function better_test_full_reindex_plot(code, name=string(typeof(code)))
-    ecirc = encoding_circuit(code)
-    new_circuit, data_order = CircuitCompilation2xn.better_data_ancil_reindex(code)
-
-    # Reindex encoding circuit
-    new_ecirc = CircuitCompilation2xn.better_encoding_reindex(ecirc, data_order)
-
-    error_rates = 0.000:0.0025:0.08
-    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc(parity_checks(code)[:,data_order], new_ecirc, new_circuit, p) for p in error_rates]
+    H = parity_checks(code)
+    dataQubits = size(H)[2]
+    reverse_dict = Dict(value => key for (key, value) in data_order)
+    parity_reindex = [reverse_dict[i] for i in collect(1:dataQubits)]
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc(parity_checks(code)[:,parity_reindex], new_ecirc, new_circuit, p) for p in error_rates]
     f1 = CircuitCompilation2xn.plot_code_performance(error_rates, post_ec_error_rates,title="Data + Anc Reindexed "*name*" w/ Encoding Circuit")
     return f1
 end
@@ -199,8 +173,8 @@ function test_LDPC_shift_reduction(n,k,w_r, samples=5)
     return  [mean(raw_shifts), mean(gate_shuffling_shifts),  mean(final_shifts)]
 end
 
-function plot_LDPC_shift_reduction(n=100)
-    row_weights = 5:12
+function plot_LDPC_shift_reduction(n=10_000)
+    row_weights = 15:22
 
     k = Int.([0.05n, 0.10n, 0.20n])
     
@@ -255,10 +229,10 @@ end
 #plot = CircuitCompilation2xn.vary_shift_errors_plot(Steane7())
 #plot = CircuitCompilation2xn.vary_shift_errors_plot(Shor9())
 
-steane_e, steane_s = better_test_full_reindex(Steane7())
-shor_e, shor_s = better_test_full_reindex(Shor9())
+#steane_e, steane_s = test_full_reindex(Steane7())
+#shor_e, shor_s = test_full_reindex(Shor9())
 
-test_full_reindex_plot(Steane7())
+#test_full_reindex_plot(Shor9())
 
 
-#a = plot_LDPC_shift_reduction()
+a = plot_LDPC_shift_reduction()
