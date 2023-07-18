@@ -418,38 +418,53 @@ end
 # TODO account for reording. Logical operator checks are dervived from the original code
 # TODO TODO CURENTLY and always was BROKEN
 """PauliFrame version of [`evaluate_code_decoder_w_ecirc`](@ref)"""
-function evaluate_code_decoder_w_ecirc_pf(code::AbstractECC, ecirc, scirc,p; nframes=10)
-    circuit = copy(scirc)
+function evaluate_code_decoder_w_ecirc_pf(code::AbstractECC, ecirc, scirc, p ; nframes=10_000)   
     checks = parity_checks(code)
     lookup_table = create_lookup_table(checks)
     O = faults_matrix(code)
+    circuit_Z = copy(scirc)
+    circuit_X = copy(scirc)
+    numDataQubits = size(checks)[2]
+    pre_X = [sHadamard(i) for i in 1:numDataQubits]
     
     constraints, qubits = size(checks)
     regbits = constraints # This is an assumption for now
 
     md = MixedDestabilizer(code)
-    logviews = [ logicalxview(md); logicalzview(md)]
-    logcirc = naive_syndrome_circuit(logviews)
+    logview_Z = [ logicalzview(md);]
+    logcirc_Z = naive_syndrome_circuit(logview_Z)
+
+    logview_X = [ logicalxview(md);]
+    logcirc_X = naive_syndrome_circuit(logview_X)
     
-    #println(logcirc)
-    for gate in logcirc
+    # Z error circuit
+    for gate in logcirc_Z
         type = typeof(gate)
-        if type == sMZ
-            push!(circuit, sMZ(gate.qubit+regbits, gate.bit+regbits))
+        if type == sMRZ
+            push!(circuit_Z, sMRZ(gate.qubit+regbits, gate.bit+regbits))
         else 
-            push!(circuit, type(gate.q1, gate.q2+regbits))
+            push!(circuit_Z, type(gate.q1, gate.q2+regbits))
         end
     end
 
-    errors = [PauliError(i,p) for i in 1:qubits]
-    fullcircuit = vcat(ecirc, errors, circuit)
+   # X error circuit
+    for gate in logcirc_X
+        type = typeof(gate)
+        if type == sMRZ
+            push!(circuit_X, sMRZ(gate.qubit+regbits, gate.bit+regbits))
+        else 
+            push!(circuit_X, type(gate.q1, gate.q2+regbits))
+        end
+    end
 
-    frames = PauliFrame(nframes, qubits+constraints+2, regbits+2)
-    pftrajectories(frames, fullcircuit)
+    # Z simulation
+    errors = [PauliError(i,p) for i in 1:qubits]
+    fullcircuit_Z = vcat(ecirc, errors, circuit_Z)
+
+    frames = PauliFrame(nframes, qubits+constraints+1, regbits+1)
+    pftrajectories(frames, fullcircuit_Z)
     syndromes = pfmeasurements(frames)[:, 1:regbits]
-    logicalSyndromes = pfmeasurements(frames)[:, regbits+1:regbits+2]
-    println(syndromes)
-    println(logicalSyndromes)
+    logicalSyndromes = pfmeasurements(frames)[:, regbits+1]
 
     decoded = 0
     for i in 1:nframes
@@ -458,22 +473,46 @@ function evaluate_code_decoder_w_ecirc_pf(code::AbstractECC, ecirc, scirc,p; nfr
         if isnothing(guess)
             continue
         else
-            result = O * stab_to_gf2(guess)
-            if result == logicalSyndromes[i,:]
+            result_Z = (O * stab_to_gf2(guess))[2]
+            if result_Z == logicalSyndromes[i]
                 decoded += 1
-            else
-                #println("Not decoded", result, logicalSyndromes[i,:])
-                #println(logviews)
             end
         end
     end
+    z_error = 1 - decoded / nframes
     
-    fullcircuit, frames
-    #1 - decoded / nframes
+    # X simulation
+    errors = [PauliError(i,p) for i in 1:qubits]
+    fullcircuit_X = vcat(ecirc, pre_X, errors, circuit_X)
+    frames = PauliFrame(nframes, qubits+constraints+1, regbits+1)
+    pftrajectories(frames, fullcircuit_X)
+    syndromes = pfmeasurements(frames)[:, 1:regbits]
+    logicalSyndromes = pfmeasurements(frames)[:, regbits+1]
+
+    decoded = 0
+    for i in 1:nframes
+        row = syndromes[i,:]
+        guess = get(lookup_table,row,nothing)
+        if isnothing(guess)
+            continue
+        else
+            result_X = (O * stab_to_gf2(guess))[1]
+            if result_X == logicalSyndromes[i]
+                decoded += 1
+            else
+                #println("Not decoded ", result_X, logicalSyndromes[i])
+                #println(logview_X)
+            end
+        end
+    end
+    x_error = 1 - decoded / nframes
+
+    #fullcircuit_X, frames
+    x_error, z_error
 end
 
 """This _shifts version of [`evaluate_code_decoder_w_ecirc`](@ref) applies errors not only at the beginning of the syndrome circuit but after each 2xn shifting AbstractOperation"""
-function evaluate_code_decoder_w_ecirc_shifts(code::Stabilizer, ecirc, circuit, p_init, p_shift; samples=1000)
+function evaluate_code_decoder_w_ecirc_shifts(code::Stabilizer, ecirc, circuit, p_init, p_shift; samples=500)
     lookup_table = create_lookup_table(code)
 
     constraints, qubits = size(code)

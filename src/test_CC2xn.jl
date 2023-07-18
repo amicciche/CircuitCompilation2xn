@@ -84,14 +84,18 @@ function pf_encoding_plot(code, name=string(typeof(code)))
 
     error_rates = 0.000:0.0025:0.08
     post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(code, ecirc, scirc, p) for p in error_rates]
-    f1 = CircuitCompilation2xn.plot_code_performance(error_rates, post_ec_error_rates,title="Original "*name*" Circuit w/ Encoding Circuit PF")
+    x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
+    z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
 
-
+    f_x = CircuitCompilation2xn.plot_code_performance(error_rates, x_error,title="Logical X Error of "*name*" Circuit PF")
+    f_z = CircuitCompilation2xn.plot_code_performance(error_rates, z_error,title="Logical Z Error of "*name*" Circuit PF")
+    
     # TODO the pf decoder needs to reorder the logical measuring circuit
     #new_circuit, order = CircuitCompilation2xn.ancil_reindex_pipeline(scirc)
     #post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(code, ecirc, new_circuit, p) for p in error_rates]
     #f2 = CircuitCompilation2xn.plot_code_performance(error_rates, post_ec_error_rates,title="Reordered "*name*" Circuit w/ Encoding Circuit PF")
-    #return f1,f2
+    
+    return f_x, f_z
 end
 
 function encoding_plot_shifts(code, name=string(typeof(code)))
@@ -220,7 +224,8 @@ end
 #orig, new = encoding_plot(Steane7())
 #orig, new = encoding_plot(Shor9())
 
-#orig, new = pf_encoding_plot(Steane7())
+f_x_Steane, f_z_Steane = pf_encoding_plot(Steane7())
+f_x_Shor, f_z_Shor = pf_encoding_plot(Shor9())
 #orig, new = pf_encoding_plot(Shor9())
 
 #plot_3 = encoding_plot_shifts(Steane7())
@@ -235,4 +240,4 @@ end
 #test_full_reindex_plot(Shor9())
 
 
-a = plot_LDPC_shift_reduction()
+#a = plot_LDPC_shift_reduction()
