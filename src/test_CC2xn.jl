@@ -177,8 +177,37 @@ function test_LDPC_shift_reduction(n,k,w_r, samples=5)
     return  [mean(raw_shifts), mean(gate_shuffling_shifts),  mean(final_shifts)]
 end
 
-function plot_LDPC_shift_reduction(n=10_000)
-    row_weights = 15:22
+function average_cooc(n,k,w_r, samples=5)
+    raw_shifts = []
+    gate_shuffling_shifts = []
+    final_shifts = []
+    for i in 1:samples
+        #matrix  = generate_LDPC_code(n,k,w_r)
+        matrix = rand(Bernoulli(w_r/n), n-k, n) #using this as an approximation
+        stab = Stabilizer(zeros(Bool,n-k, n), matrix)
+        scirc = naive_syndrome_circuit(stab)
+        
+        circuit_wo_mz, measurement_circuit = CircuitCompilation2xn.clifford_grouper(scirc)
+        numGates = length(circuit_wo_mz)
+        push!(raw_shifts, numGates/length(CircuitCompilation2xn.calculate_shifts(circuit_wo_mz)))
+        
+        push!(gate_shuffling_shifts, numGates/length((CircuitCompilation2xn.gate_Shuffle(circuit_wo_mz))))
+        
+        # TODO confirm that data ancil reindexing works as expected for these generated LDPC codes
+        final_circ, order = CircuitCompilation2xn.data_ancil_reindex(circuit_wo_mz, 2n-k)
+        push!(final_shifts, numGates/length(CircuitCompilation2xn.calculate_shifts(final_circ)))
+    end
+
+    println("\nRow weight: ", w_r)
+    println("Raw co-oc: ", mean(raw_shifts))
+    println("After gate shuffling co-oc: ", mean(gate_shuffling_shifts))
+    println("After data-ancil reindexing co-oc: ", mean(final_shifts))
+
+    return  [mean(raw_shifts), mean(gate_shuffling_shifts),  mean(final_shifts)]
+end
+
+function plot_LDPC_shift_reduction_ratio(n=100)
+    row_weights = 5:15
 
     k = Int.([0.05n, 0.10n, 0.20n])
     
@@ -192,27 +221,97 @@ function plot_LDPC_shift_reduction(n=10_000)
     c = reduce(hcat, c)
 
     f = Figure(resolution=(1100,900))
-    ax = f[1,1] = Axis(f, xlabel="Row Weights", ylabel="Number of Shifts to Run on 2xn", title="N=10,000 Random Classical LDPC Code Shift Reductions")
-
-    # Uncompiled Plots
-    #lines!(row_weights, a[1,:], label="No compilation; k = 5%", color=:red, linestyle = nothing)
-    #lines!(row_weights, b[1,:], label="No compilation; k = 10%", color=:red, linestyle = :dot)
-    #lines!(row_weights, c[1,:], label="No compilation; k = 20%", color=:red, linestyle = :dash)
+    ax = f[1,1] = Axis(f, xlabel="Row Weights", ylabel="Ratio of Number of Uncompiled Shifts over Compiled Shifts", title="N= "*string(n)*" Random Classical LDPC Codes Shift Reductions")
 
     # Compiled Plots
-    lines!(row_weights, a[2,:], label="Gate Shuffling; k = 5%", color=:blue, linestyle = nothing)
-    lines!(row_weights, b[2,:], label="Gate Shuffling; k = 10%", color=:blue, linestyle = :dot)
-    lines!(row_weights, c[2,:], label="Gate Shuffling; k = 20%", color=:blue, linestyle = :dash)
+    lines!(row_weights, a[2,:]./a[1,:], label="Gate Shuffling; r = 5%", color=:blue, linestyle = nothing)
+    lines!(row_weights, b[2,:]./b[1,:], label="Gate Shuffling; r = 10%", color=:blue, linestyle = :dot)
+    lines!(row_weights, c[2,:]./c[1,:], label="Gate Shuffling; r = 20%", color=:blue, linestyle = :dash)
 
     # Compiled Plots
-    lines!(row_weights, a[3,:], label="Data anc reordering; k = 5%", color=:green, linestyle = nothing)
-    lines!(row_weights, b[3,:], label="Data anc reordering; k = 10%", color=:green, linestyle = :dot)
-    lines!(row_weights, c[3,:], label="Data anc reordering; k = 20%", color=:green, linestyle = :dash)
+    lines!(row_weights, a[3,:]./a[1,:], label="Data anc reordering; r = 5%", color=:green, linestyle = nothing)
+    lines!(row_weights, b[3,:]./b[1,:], label="Data anc reordering; r = 10%", color=:green, linestyle = :dot)
+    lines!(row_weights, c[3,:]./c[1,:], label="Data anc reordering; r = 20%", color=:green, linestyle = :dash)
     
     f[1,2] = Legend(f, ax, "Error Rates")
     
     return f
 end
+
+function plot_LDPC_shift_reduction_shiftPcheck(n=1000)
+    row_weights = 5:15
+
+    k = Int.([0.05n, 0.10n, 0.20n])
+    
+    a = [test_LDPC_shift_reduction(n,k[1],w_r) for w_r in row_weights]
+    a = reduce(hcat, a)/(n-k[1])
+
+    b = [test_LDPC_shift_reduction(n,k[2],w_r) for w_r in row_weights]
+    b = reduce(hcat, b)/(n-k[2])
+
+    c = [test_LDPC_shift_reduction(n,k[3],w_r) for w_r in row_weights]
+    c = reduce(hcat, c)/(n-k[3])
+
+    f = Figure(resolution=(1100,900))
+    ax = f[1,1] = Axis(f, xlabel="Row Weights", ylabel="Average number of shifts per check", title="N= "*string(n)*" Random Classical LDPC Codes Shift Reductions")
+
+    # Uncompiled Plots
+    lines!(row_weights, a[1,:], label="No compilation; r = 5%", color=:red, linestyle = nothing)
+    lines!(row_weights, b[1,:], label="No compilation; r = 10%", color=:red, linestyle = :dot)
+    lines!(row_weights, c[1,:], label="No compilation; r = 20%", color=:red, linestyle = :dash)
+
+    # Compiled Plots
+    lines!(row_weights, a[2,:], label="Gate Shuffling; r = 5%", color=:blue, linestyle = nothing)
+    lines!(row_weights, b[2,:], label="Gate Shuffling; r = 10%", color=:blue, linestyle = :dot)
+    lines!(row_weights, c[2,:], label="Gate Shuffling; r = 20%", color=:blue, linestyle = :dash)
+
+    # Compiled Plots
+    lines!(row_weights, a[3,:], label="Data anc reordering; r = 5%", color=:green, linestyle = nothing)
+    lines!(row_weights, b[3,:], label="Data anc reordering; r = 10%", color=:green, linestyle = :dot)
+    lines!(row_weights, c[3,:], label="Data anc reordering; r = 20%", color=:green, linestyle = :dash)
+    
+    f[1,2] = Legend(f, ax, "Error Rates")
+    
+    return f
+end
+
+function plot_LDPC_shift_reduction_cooc(n=100)
+    row_weights = 5:15
+
+    k = Int.([0.05n, 0.10n, 0.20n])
+    
+    a = [average_cooc(n,k[1],w_r) for w_r in row_weights]
+    a = reduce(hcat, a)
+
+    b = [average_cooc(n,k[2],w_r) for w_r in row_weights]
+    b = reduce(hcat, b)
+
+    c = [average_cooc(n,k[3],w_r) for w_r in row_weights]
+    c = reduce(hcat, c)
+
+    f = Figure(resolution=(1100,900))
+    ax = f[1,1] = Axis(f, xlabel="Row Weights", ylabel="Average number of parallel gates per shuffle", title="N= "*string(n)*" Random Classical LDPC Codes Shift Reductions")
+
+    # Uncompiled Plots
+    lines!(row_weights, a[1,:], label="No compilation; r = 5%", color=:red, linestyle = nothing)
+    lines!(row_weights, b[1,:], label="No compilation; r = 10%", color=:red, linestyle = :dot)
+    lines!(row_weights, c[1,:], label="No compilation; r = 20%", color=:red, linestyle = :dash)
+
+    # Compiled Plots
+    lines!(row_weights, a[2,:], label="Gate Shuffling; r = 5%", color=:blue, linestyle = nothing)
+    lines!(row_weights, b[2,:], label="Gate Shuffling; r = 10%", color=:blue, linestyle = :dot)
+    lines!(row_weights, c[2,:], label="Gate Shuffling; r = 20%", color=:blue, linestyle = :dash)
+
+    # Compiled Plots
+    lines!(row_weights, a[3,:], label="Data anc reordering; r = 5%", color=:green, linestyle = nothing)
+    lines!(row_weights, b[3,:], label="Data anc reordering; r = 10%", color=:green, linestyle = :dot)
+    lines!(row_weights, c[3,:], label="Data anc reordering; r = 20%", color=:green, linestyle = :dash)
+    
+    f[1,2] = Legend(f, ax, "Error Rates")
+    
+    return f
+end
+
 #println("\n######################### Steane7 #########################")
 #test_code(Steane7())
 
@@ -240,4 +339,5 @@ f_x_Shor, f_z_Shor = pf_encoding_plot(Shor9())
 #test_full_reindex_plot(Shor9())
 
 
-#a = plot_LDPC_shift_reduction()
+#plot = plot_LDPC_shift_reduction_shiftPcheck()
+#plot = plot_LDPC_shift_reduction_cooc()
