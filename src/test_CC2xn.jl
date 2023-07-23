@@ -90,10 +90,15 @@ function pf_encoding_plot(code, name=string(typeof(code)))
     f_x = CircuitCompilation2xn.plot_code_performance(error_rates, x_error,title="Logical X Error of "*name*" Circuit PF")
     f_z = CircuitCompilation2xn.plot_code_performance(error_rates, z_error,title="Logical Z Error of "*name*" Circuit PF")
     
-    # TODO the pf decoder needs to reorder the logical measuring circuit
-    #new_circuit, order = CircuitCompilation2xn.ancil_reindex_pipeline(scirc)
-    #post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(code, ecirc, new_circuit, p) for p in error_rates]
-    #f2 = CircuitCompilation2xn.plot_code_performance(error_rates, post_ec_error_rates,title="Reordered "*name*" Circuit w/ Encoding Circuit PF")
+    # TODO the pf decoder needs to reorder the logical measuring circuit - if there is data reindexing
+    # TODO below is only ancil reindexing. Need to add data reindexing. - but first need to be able to create fault matrix from Stabilizer
+    new_circuit, order = CircuitCompilation2xn.ancil_reindex_pipeline(scirc)
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(code, ecirc, new_circuit, p) for p in error_rates]
+    x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
+    z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
+
+    f_x = CircuitCompilation2xn.plot_code_performance(error_rates, x_error,title="Logical X Error of "*name*" Circuit PF")
+    f_z = CircuitCompilation2xn.plot_code_performance(error_rates, z_error,title="Logical Z Error of "*name*" Circuit PF")
     
     return f_x, f_z
 end
@@ -325,7 +330,6 @@ end
 
 f_x_Steane, f_z_Steane = pf_encoding_plot(Steane7())
 f_x_Shor, f_z_Shor = pf_encoding_plot(Shor9())
-#orig, new = pf_encoding_plot(Shor9())
 
 #plot_3 = encoding_plot_shifts(Steane7())
 #plot_3 = encoding_plot_shifts(Shor9())
@@ -341,3 +345,7 @@ f_x_Shor, f_z_Shor = pf_encoding_plot(Shor9())
 
 #plot = plot_LDPC_shift_reduction_shiftPcheck()
 #plot = plot_LDPC_shift_reduction_cooc()
+#code = Shor9()
+#scirc = naive_syndrome_circuit(code)
+#ecirc = encoding_circuit(code)
+#CircuitCompilation2xn.table_logcirc_debug(code, ecirc, scirc)

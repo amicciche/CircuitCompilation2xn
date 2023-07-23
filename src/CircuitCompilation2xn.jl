@@ -5,6 +5,7 @@ module CircuitCompilation2xn
 using QuantumClifford
 using CairoMakie
 using QuantumClifford.ECC: Steane7, Shor9, naive_syndrome_circuit, encoding_circuit, parity_checks, code_s, code_n, AbstractECC, faults_matrix
+using Statistics
 
 threeRepCode = [sCNOT(1,4),sCNOT(2,4),sCNOT(2,5),sCNOT(3,5)]
 k4_example = [sCNOT(1,4),sCNOT(3,4),sCNOT(2,5),sCNOT(2,4),sCNOT(2,7),sCNOT(3,6),sCNOT(3,5)]
@@ -415,8 +416,7 @@ function evaluate_code_decoder_w_ecirc(code::Stabilizer, ecirc, circuit,p; sampl
     1 - decoded / samples
 end
 
-# TODO account for reording. Logical operator checks are dervived from the original code
-# TODO TODO CURENTLY and always was BROKEN
+# TODO account for reordering. Logical operator checks are dervived from the original code
 """PauliFrame version of [`evaluate_code_decoder_w_ecirc`](@ref)"""
 function evaluate_code_decoder_w_ecirc_pf(code::AbstractECC, ecirc, scirc, p ; nframes=10_000)   
     checks = parity_checks(code)
@@ -424,8 +424,7 @@ function evaluate_code_decoder_w_ecirc_pf(code::AbstractECC, ecirc, scirc, p ; n
     O = faults_matrix(code)
     circuit_Z = copy(scirc)
     circuit_X = copy(scirc)
-    numDataQubits = size(checks)[2]
-    pre_X = [sHadamard(i) for i in 1:numDataQubits]
+    pre_X = sHadamard(1) # to initialize in x basis
     
     constraints, qubits = size(checks)
     regbits = constraints # This is an assumption for now
@@ -482,8 +481,7 @@ function evaluate_code_decoder_w_ecirc_pf(code::AbstractECC, ecirc, scirc, p ; n
     z_error = 1 - decoded / nframes
     
     # X simulation
-    errors = [PauliError(i,p) for i in 1:qubits]
-    fullcircuit_X = vcat(ecirc, pre_X, errors, circuit_X)
+    fullcircuit_X = vcat(pre_X, ecirc, errors, circuit_X)
     frames = PauliFrame(nframes, qubits+constraints+1, regbits+1)
     pftrajectories(frames, fullcircuit_X)
     syndromes = pfmeasurements(frames)[:, 1:regbits]
@@ -499,16 +497,12 @@ function evaluate_code_decoder_w_ecirc_pf(code::AbstractECC, ecirc, scirc, p ; n
             result_X = (O * stab_to_gf2(guess))[1]
             if result_X == logicalSyndromes[i]
                 decoded += 1
-            else
-                #println("Not decoded ", result_X, logicalSyndromes[i])
-                #println(logview_X)
             end
         end
     end
     x_error = 1 - decoded / nframes
 
-    #fullcircuit_X, frames
-    x_error, z_error
+    return x_error, z_error
 end
 
 """This _shifts version of [`evaluate_code_decoder_w_ecirc`](@ref) applies errors not only at the beginning of the syndrome circuit but after each 2xn shifting AbstractOperation"""
