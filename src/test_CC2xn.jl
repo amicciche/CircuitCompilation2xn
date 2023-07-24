@@ -46,7 +46,7 @@ function test_full_reindex_plot(code, name=string(typeof(code)))
     dataQubits = size(H)[2]
     reverse_dict = Dict(value => key for (key, value) in data_order)
     parity_reindex = [reverse_dict[i] for i in collect(1:dataQubits)]
-    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc(parity_checks(code)[:,parity_reindex], new_ecirc, new_circuit, p) for p in error_rates]
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc(H[:,parity_reindex], new_ecirc, new_circuit, p) for p in error_rates]
     f1 = CircuitCompilation2xn.plot_code_performance(error_rates, post_ec_error_rates,title="Data + Anc Reindexed "*name*" w/ Encoding Circuit")
     return f1
 end
@@ -81,26 +81,36 @@ end
 function pf_encoding_plot(code, name=string(typeof(code)))
     scirc = naive_syndrome_circuit(code)
     ecirc = encoding_circuit(code)
+    checks = parity_checks(code)
 
     error_rates = 0.000:0.0025:0.08
-    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(code, ecirc, scirc, p) for p in error_rates]
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(checks, ecirc, scirc, p) for p in error_rates]
     x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
     z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
 
     f_x = CircuitCompilation2xn.plot_code_performance(error_rates, x_error,title="Logical X Error of "*name*" Circuit PF")
     f_z = CircuitCompilation2xn.plot_code_performance(error_rates, z_error,title="Logical Z Error of "*name*" Circuit PF")
     
-    # TODO the pf decoder needs to reorder the logical measuring circuit - if there is data reindexing
-    # TODO below is only ancil reindexing. Need to add data reindexing. - but first need to be able to create fault matrix from Stabilizer
-    new_circuit, order = CircuitCompilation2xn.ancil_reindex_pipeline(scirc)
-    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(code, ecirc, new_circuit, p) for p in error_rates]
+    # Data-anc compile the circuit
+    new_circuit, data_order = CircuitCompilation2xn.data_ancil_reindex(code)
+
+    # Reindex encoding circuit
+    new_ecirc = CircuitCompilation2xn.encoding_reindex(ecirc, data_order)
+
+    # Reindex the parity checks via checks[:,parity_reindex]
+    dataQubits = size(checks)[2]
+    reverse_dict = Dict(value => key for (key, value) in data_order)
+    parity_reindex = [reverse_dict[i] for i in collect(1:dataQubits)]
+
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(checks[:,parity_reindex], new_ecirc, new_circuit, p) for p in error_rates]
     x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
     z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
 
-    f_x = CircuitCompilation2xn.plot_code_performance(error_rates, x_error,title="Logical X Error of "*name*" Circuit PF")
-    f_z = CircuitCompilation2xn.plot_code_performance(error_rates, z_error,title="Logical Z Error of "*name*" Circuit PF")
+    new_f_x = CircuitCompilation2xn.plot_code_performance(error_rates, x_error,title="Logical X Error of "*name*" Circuit PF")
+    new_f_z = CircuitCompilation2xn.plot_code_performance(error_rates, z_error,title="Logical Z Error of "*name*" Circuit PF")
     
-    return f_x, f_z
+    #return f_x, f_z
+    return new_f_x, new_f_z
 end
 
 function encoding_plot_shifts(code, name=string(typeof(code)))
@@ -328,8 +338,8 @@ end
 #orig, new = encoding_plot(Steane7())
 #orig, new = encoding_plot(Shor9())
 
-f_x_Steane, f_z_Steane = pf_encoding_plot(Steane7())
-f_x_Shor, f_z_Shor = pf_encoding_plot(Shor9())
+#f_x_Steane, f_z_Steane = pf_encoding_plot(Steane7())
+#f_x_Shor, f_z_Shor = pf_encoding_plot(Shor9())
 
 #plot_3 = encoding_plot_shifts(Steane7())
 #plot_3 = encoding_plot_shifts(Shor9())
@@ -340,7 +350,7 @@ f_x_Shor, f_z_Shor = pf_encoding_plot(Shor9())
 #steane_e, steane_s = test_full_reindex(Steane7())
 #shor_e, shor_s = test_full_reindex(Shor9())
 
-#test_full_reindex_plot(Shor9())
+test_full_reindex_plot(Shor9())
 
 
 #plot = plot_LDPC_shift_reduction_shiftPcheck()

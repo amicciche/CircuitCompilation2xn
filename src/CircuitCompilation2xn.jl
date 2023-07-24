@@ -416,12 +416,10 @@ function evaluate_code_decoder_w_ecirc(code::Stabilizer, ecirc, circuit,p; sampl
     1 - decoded / samples
 end
 
-# TODO account for reordering. Logical operator checks are dervived from the original code
 """PauliFrame version of [`evaluate_code_decoder_w_ecirc`](@ref)"""
-function evaluate_code_decoder_w_ecirc_pf(code::AbstractECC, ecirc, scirc, p ; nframes=10_000)   
-    checks = parity_checks(code)
+function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p ; nframes=10_000)   
     lookup_table = create_lookup_table(checks)
-    O = faults_matrix(code)
+    O = faults_matrix(checks)
     circuit_Z = copy(scirc)
     circuit_X = copy(scirc)
     pre_X = sHadamard(1) # to initialize in x basis
@@ -429,7 +427,7 @@ function evaluate_code_decoder_w_ecirc_pf(code::AbstractECC, ecirc, scirc, p ; n
     constraints, qubits = size(checks)
     regbits = constraints # This is an assumption for now
 
-    md = MixedDestabilizer(code)
+    md = MixedDestabilizer(checks)
     logview_Z = [ logicalzview(md);]
     logcirc_Z = naive_syndrome_circuit(logview_Z)
 
