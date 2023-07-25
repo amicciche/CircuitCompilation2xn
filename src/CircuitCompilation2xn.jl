@@ -416,8 +416,9 @@ function evaluate_code_decoder_w_ecirc(code::Stabilizer, ecirc, circuit,p; sampl
     1 - decoded / samples
 end
 
-"""PauliFrame version of [`evaluate_code_decoder_w_ecirc`](@ref)"""
-function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p ; nframes=10_000)   
+"""PauliFrame version of [`evaluate_code_decoder_w_ecirc`](@ref) and [`evaluate_code_decoder_w_ecirc_shifts`](@ref).
+If no p_shift is provided, this runs as if it there were no shift errors."""
+function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_init, p_shift=0 ; nframes=10_000)   
     lookup_table = create_lookup_table(checks)
     O = faults_matrix(checks)
     circuit_Z = copy(scirc)
@@ -427,6 +428,27 @@ function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p ; 
     constraints, qubits = size(checks)
     regbits = constraints # This is an assumption for now
 
+    if p_shift != 0       
+        non_mz, mz = clifford_grouper(scirc)
+        non_mz = calculate_shifts(non_mz)
+        circuit_X = []
+        circuit_Z = []
+
+        first_shift = true
+        for subcircuit in non_mz
+            # Shift!
+            if !first_shift
+                append!(circuit_X, [PauliError(i,p_shift) for i in 1:qubits])
+                append!(circuit_Z, [PauliError(i,p_shift) for i in 1:qubits])
+            end
+            append!(circuit_Z, subcircuit)
+            append!(circuit_X, subcircuit)
+            first_shift = false
+        end
+        append!(circuit_X, mz)
+        append!(circuit_Z, mz)
+    end
+
     md = MixedDestabilizer(checks)
     logview_Z = [ logicalzview(md);]
     logcirc_Z = naive_syndrome_circuit(logview_Z)
@@ -434,7 +456,7 @@ function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p ; 
     logview_X = [ logicalxview(md);]
     logcirc_X = naive_syndrome_circuit(logview_X)
     
-    # Z error circuit
+    # Z logic circuit
     for gate in logcirc_Z
         type = typeof(gate)
         if type == sMRZ
@@ -444,7 +466,7 @@ function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p ; 
         end
     end
 
-   # X error circuit
+   # X logic circuit
     for gate in logcirc_X
         type = typeof(gate)
         if type == sMRZ
@@ -455,7 +477,7 @@ function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p ; 
     end
 
     # Z simulation
-    errors = [PauliError(i,p) for i in 1:qubits]
+    errors = [PauliError(i,p_init) for i in 1:qubits]
     fullcircuit_Z = vcat(ecirc, errors, circuit_Z)
 
     frames = PauliFrame(nframes, qubits+constraints+1, regbits+1)
@@ -649,4 +671,97 @@ function vary_shift_errors_plot(code, name=string(typeof(code)))
     f
 end
 
+"""Same as [`vary_shift_errors_plot`](@ref) but uses pauli frame simulation"""
+function vary_shift_errors_plot_pf(code, name=string(typeof(code)))
+    title = name*" Circuit w/ Encoding Circuit PF"
+    scirc = naive_syndrome_circuit(code)
+    ecirc = encoding_circuit(code)
+    checks = parity_checks(code)
+
+    error_rates = 0.000:0.00150:0.12
+    # Uncompiled errors 
+    post_ec_error_rates_s0 = [evaluate_code_decoder_w_ecirc_pf(checks, ecirc, scirc, p, 0) for p in error_rates]
+    post_ec_error_rates_s10 = [evaluate_code_decoder_w_ecirc_pf(checks, ecirc, scirc, p, p/10) for p in error_rates]
+    post_ec_error_rates_s100 = [evaluate_code_decoder_w_ecirc_pf(checks, ecirc, scirc, p, p) for p in error_rates]
+    x_error_s0 = [post_ec_error_rates_s0[i][1] for i in eachindex(post_ec_error_rates_s0)]
+    z_error_s0 = [post_ec_error_rates_s0[i][2] for i in eachindex(post_ec_error_rates_s0)]
+    x_error_s10 = [post_ec_error_rates_s10[i][1] for i in eachindex(post_ec_error_rates_s10)]
+    z_error_s10 = [post_ec_error_rates_s10[i][2] for i in eachindex(post_ec_error_rates_s10)]
+    x_error_s100 = [post_ec_error_rates_s100[i][1] for i in eachindex(post_ec_error_rates_s100)]
+    z_error_s100 = [post_ec_error_rates_s100[i][2] for i in eachindex(post_ec_error_rates_s100)]
+
+    # Anc Compiled circuit
+    new_circuit, order = ancil_reindex_pipeline(scirc)
+    compiled_post_ec_error_rates_s0 = [evaluate_code_decoder_w_ecirc_pf(checks, ecirc, new_circuit, p, 0) for p in error_rates]
+    compiled_post_ec_error_rates_s10 = [evaluate_code_decoder_w_ecirc_pf(checks, ecirc, new_circuit, p, p/10) for p in error_rates]
+    compiled_post_ec_error_rates_s100 = [evaluate_code_decoder_w_ecirc_pf(checks, ecirc, new_circuit, p, p) for p in error_rates]
+    compiled_x_error_s0 = [compiled_post_ec_error_rates_s0[i][1] for i in eachindex(compiled_post_ec_error_rates_s0)]
+    compiled_z_error_s0 = [compiled_post_ec_error_rates_s0[i][2] for i in eachindex(compiled_post_ec_error_rates_s0)]
+    compiled_x_error_s10 = [compiled_post_ec_error_rates_s10[i][1] for i in eachindex(compiled_post_ec_error_rates_s10)]
+    compiled_z_error_s10 = [compiled_post_ec_error_rates_s10[i][2] for i in eachindex(compiled_post_ec_error_rates_s10)]
+    compiled_x_error_s100 = [compiled_post_ec_error_rates_s100[i][1] for i in eachindex(compiled_post_ec_error_rates_s100)]
+    compiled_z_error_s100 = [compiled_post_ec_error_rates_s100[i][2] for i in eachindex(compiled_post_ec_error_rates_s100)]
+    
+    # Data + Anc Compiled circuit
+    renewed_circuit, data_order = data_ancil_reindex(code)
+    renewed_ecirc = encoding_reindex(ecirc, data_order)
+    dataQubits = size(checks)[2]
+    reverse_dict = Dict(value => key for (key, value) in data_order)
+    parity_reindex = [reverse_dict[i] for i in collect(1:dataQubits)]
+    renewed_checks = checks[:,parity_reindex] 
+    full_compiled_post_ec_error_rates_s0 = [evaluate_code_decoder_w_ecirc_pf(renewed_checks, renewed_ecirc, renewed_circuit, p, 0) for p in error_rates]
+    full_compiled_post_ec_error_rates_s10 = [evaluate_code_decoder_w_ecirc_pf(renewed_checks, renewed_ecirc, renewed_circuit, p, p/10) for p in error_rates]
+    full_compiled_post_ec_error_rates_s100 = [evaluate_code_decoder_w_ecirc_pf(renewed_checks, renewed_ecirc, renewed_circuit, p, p) for p in error_rates]
+    full_compiled_x_error_s0 = [full_compiled_post_ec_error_rates_s0[i][1] for i in eachindex(full_compiled_post_ec_error_rates_s0)]
+    full_compiled_z_error_s0 = [full_compiled_post_ec_error_rates_s0[i][2] for i in eachindex(full_compiled_post_ec_error_rates_s0)]
+    full_compiled_x_error_s10 = [full_compiled_post_ec_error_rates_s10[i][1] for i in eachindex(full_compiled_post_ec_error_rates_s10)]
+    full_compiled_z_error_s10 = [full_compiled_post_ec_error_rates_s10[i][2] for i in eachindex(full_compiled_post_ec_error_rates_s10)]
+    full_compiled_x_error_s100 = [full_compiled_post_ec_error_rates_s100[i][1] for i in eachindex(full_compiled_post_ec_error_rates_s100)]
+    full_compiled_z_error_s100 = [full_compiled_post_ec_error_rates_s100[i][2] for i in eachindex(full_compiled_post_ec_error_rates_s100)]
+
+    f_x = Figure(resolution=(1100,900))
+    ax = f_x[1,1] = Axis(f_x, xlabel="single (qu)bit error rate",title=title*" Logical X")
+    lim = max(error_rates[end])
+    lines!([0,lim], [0,lim], label="single bit", color=:black)
+
+    # Uncompiled Plots
+    scatter!(error_rates, x_error_s0, label="Original circuit with no shift errors", color=:red, marker=:circle)
+    scatter!(error_rates, x_error_s10, label="Original circuit with shift errors = p/10", color=:red, marker=:utriangle)
+    scatter!(error_rates, x_error_s100, label="Original circuit with shift errors = p", color=:red, marker=:star8)
+
+    # Compiled Plots
+    scatter!(error_rates, compiled_x_error_s0, label="Anc compiled circuit with no shift errors", color=:blue, marker=:circle)
+    scatter!(error_rates, compiled_x_error_s10, label="Anc compiled circuit with shift errors = p/10", color=:blue, marker=:utriangle)
+    scatter!(error_rates, compiled_x_error_s100, label="Anc compiled circuit with shift errors = p", color=:blue, marker=:star8)
+
+     # Compiled Plots
+     scatter!(error_rates, full_compiled_x_error_s0, label="Data + anc compiled circuit with no shift errors", color=:green, marker=:circle)
+     scatter!(error_rates, full_compiled_x_error_s10, label="Data + anc compiled circuit with shift errors = p/10", color=:green, marker=:utriangle)
+     scatter!(error_rates, full_compiled_x_error_s100, label="Data + anc compiled circuit with shift errors = p", color=:green, marker=:star8)
+    
+    f_x[1,2] = Legend(f_x, ax, "Error Rates")
+
+    f_z = Figure(resolution=(1100,900))
+    ax = f_z[1,1] = Axis(f_z, xlabel="single (qu)bit error rate",title=title*" Logical Z")
+    lim = max(error_rates[end])
+    lines!([0,lim], [0,lim], label="single bit", color=:black)
+
+    # Uncompiled Plots
+    scatter!(error_rates, x_error_s0, label="Original circuit with no shift errors", color=:red, marker=:circle)
+    scatter!(error_rates, x_error_s10, label="Original circuit with shift errors = p/10", color=:red, marker=:utriangle)
+    scatter!(error_rates, x_error_s100, label="Original circuit with shift errors = p", color=:red, marker=:star8)
+
+    # Compiled Plots
+    scatter!(error_rates, compiled_x_error_s0, label="Anc compiled circuit with no shift errors", color=:blue, marker=:circle)
+    scatter!(error_rates, compiled_x_error_s10, label="Anc compiled circuit with shift errors = p/10", color=:blue, marker=:utriangle)
+    scatter!(error_rates, compiled_x_error_s100, label="Anc compiled circuit with shift errors = p", color=:blue, marker=:star8)
+
+     # Compiled Plots
+     scatter!(error_rates, full_compiled_x_error_s0, label="Data + anc compiled circuit with no shift errors", color=:green, marker=:circle)
+     scatter!(error_rates, full_compiled_x_error_s10, label="Data + anc compiled circuit with shift errors = p/10", color=:green, marker=:utriangle)
+     scatter!(error_rates, full_compiled_x_error_s100, label="Data + anc compiled circuit with shift errors = p", color=:green, marker=:star8)
+    
+    f_z[1,2] = Legend(f_z, ax, "Error Rates")
+    return f_x, f_z
+end
 end # module CircuitCompilation2xn

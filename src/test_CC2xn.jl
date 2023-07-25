@@ -84,7 +84,7 @@ function pf_encoding_plot(code, name=string(typeof(code)))
     checks = parity_checks(code)
 
     error_rates = 0.000:0.0025:0.08
-    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(checks, ecirc, scirc, p) for p in error_rates]
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(checks, ecirc, scirc, p, p/10) for p in error_rates]
     x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
     z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
 
@@ -102,7 +102,7 @@ function pf_encoding_plot(code, name=string(typeof(code)))
     reverse_dict = Dict(value => key for (key, value) in data_order)
     parity_reindex = [reverse_dict[i] for i in collect(1:dataQubits)]
 
-    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(checks[:,parity_reindex], new_ecirc, new_circuit, p) for p in error_rates]
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(checks[:,parity_reindex], new_ecirc, new_circuit, p, p/100) for p in error_rates]
     x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
     z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
 
@@ -341,6 +341,9 @@ end
 #f_x_Steane, f_z_Steane = pf_encoding_plot(Steane7())
 #f_x_Shor, f_z_Shor = pf_encoding_plot(Shor9())
 
+f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Steane7())
+#plot = CircuitCompilation2xn.vary_shift_errors_plot_pf(Shor9())
+
 #plot_3 = encoding_plot_shifts(Steane7())
 #plot_3 = encoding_plot_shifts(Shor9())
 
@@ -350,7 +353,7 @@ end
 #steane_e, steane_s = test_full_reindex(Steane7())
 #shor_e, shor_s = test_full_reindex(Shor9())
 
-test_full_reindex_plot(Shor9())
+#test_full_reindex_plot(Shor9())
 
 
 #plot = plot_LDPC_shift_reduction_shiftPcheck()
