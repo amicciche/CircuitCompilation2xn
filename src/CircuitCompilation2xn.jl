@@ -373,7 +373,7 @@ function evaluate_code_decoder(code::Stabilizer, circuit,p; samples=1_000)
 end
 
 """Differs from [`evaluate_code_decoder`](@ref) by using an encoding circuit instead of of a parity matrix for initializing the state"""
-function evaluate_code_decoder_w_ecirc(code::Stabilizer, ecirc, circuit,p; samples=10_000)
+function evaluate_code_decoder_w_ecirc(code::Stabilizer, ecirc, circuit,p; samples=1_000)
     lookup_table = create_lookup_table(code)
 
     constraints, qubits = size(code)
@@ -618,7 +618,7 @@ function plot_code_performance_shift(error_rates, post_ec_error_rates_unsorted, 
 end
 
 """Given a code, plots the compiled version and the original, varrying the probability of the error of the shifts"""
-function vary_shift_errors_plot(code, name=string(typeof(code)))
+function vary_shift_errors_plot(code::AbstractECC, name=string(typeof(code)))
     title = name*" Circuit w/ Encoding Circuit"
     scirc = naive_syndrome_circuit(code)
     ecirc = encoding_circuit(code)
@@ -672,7 +672,7 @@ function vary_shift_errors_plot(code, name=string(typeof(code)))
 end
 
 """Same as [`vary_shift_errors_plot`](@ref) but uses pauli frame simulation"""
-function vary_shift_errors_plot_pf(code, name=string(typeof(code)))
+function vary_shift_errors_plot_pf(code::AbstractECC, name=string(typeof(code)))
     title = name*" Circuit w/ Encoding Circuit PF"
     scirc = naive_syndrome_circuit(code)
     ecirc = encoding_circuit(code)
@@ -747,19 +747,19 @@ function vary_shift_errors_plot_pf(code, name=string(typeof(code)))
     lines!([0,lim], [0,lim], label="single bit", color=:black)
 
     # Uncompiled Plots
-    scatter!(error_rates, x_error_s0, label="Original circuit with no shift errors", color=:red, marker=:circle)
-    scatter!(error_rates, x_error_s10, label="Original circuit with shift errors = p/10", color=:red, marker=:utriangle)
-    scatter!(error_rates, x_error_s100, label="Original circuit with shift errors = p", color=:red, marker=:star8)
+    scatter!(error_rates, z_error_s0, label="Original circuit with no shift errors", color=:red, marker=:circle)
+    scatter!(error_rates, z_error_s10, label="Original circuit with shift errors = p/10", color=:red, marker=:utriangle)
+    scatter!(error_rates, z_error_s100, label="Original circuit with shift errors = p", color=:red, marker=:star8)
 
     # Compiled Plots
-    scatter!(error_rates, compiled_x_error_s0, label="Anc compiled circuit with no shift errors", color=:blue, marker=:circle)
-    scatter!(error_rates, compiled_x_error_s10, label="Anc compiled circuit with shift errors = p/10", color=:blue, marker=:utriangle)
-    scatter!(error_rates, compiled_x_error_s100, label="Anc compiled circuit with shift errors = p", color=:blue, marker=:star8)
+    scatter!(error_rates, compiled_z_error_s0, label="Anc compiled circuit with no shift errors", color=:blue, marker=:circle)
+    scatter!(error_rates, compiled_z_error_s10, label="Anc compiled circuit with shift errors = p/10", color=:blue, marker=:utriangle)
+    scatter!(error_rates, compiled_z_error_s100, label="Anc compiled circuit with shift errors = p", color=:blue, marker=:star8)
 
      # Compiled Plots
-     scatter!(error_rates, full_compiled_x_error_s0, label="Data + anc compiled circuit with no shift errors", color=:green, marker=:circle)
-     scatter!(error_rates, full_compiled_x_error_s10, label="Data + anc compiled circuit with shift errors = p/10", color=:green, marker=:utriangle)
-     scatter!(error_rates, full_compiled_x_error_s100, label="Data + anc compiled circuit with shift errors = p", color=:green, marker=:star8)
+     scatter!(error_rates, full_compiled_z_error_s0, label="Data + anc compiled circuit with no shift errors", color=:green, marker=:circle)
+     scatter!(error_rates, full_compiled_z_error_s10, label="Data + anc compiled circuit with shift errors = p/10", color=:green, marker=:utriangle)
+     scatter!(error_rates, full_compiled_z_error_s100, label="Data + anc compiled circuit with shift errors = p", color=:green, marker=:star8)
     
     f_z[1,2] = Legend(f_z, ax, "Error Rates")
     return f_x, f_z

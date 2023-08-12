@@ -189,7 +189,7 @@ function test_LDPC_shift_reduction(n,k,w_r, samples=5)
     println("After gate shuffling shifts: ", mean(gate_shuffling_shifts))
     println("After data-ancil reindexing shifts: ", mean(final_shifts))
 
-    return  [mean(raw_shifts), mean(gate_shuffling_shifts),  mean(final_shifts)]
+    return [mean(raw_shifts), mean(gate_shuffling_shifts),  mean(final_shifts)]
 end
 
 function average_cooc(n,k,w_r, samples=5)
@@ -218,7 +218,7 @@ function average_cooc(n,k,w_r, samples=5)
     println("After gate shuffling co-oc: ", mean(gate_shuffling_shifts))
     println("After data-ancil reindexing co-oc: ", mean(final_shifts))
 
-    return  [mean(raw_shifts), mean(gate_shuffling_shifts),  mean(final_shifts)]
+    return [mean(raw_shifts), mean(gate_shuffling_shifts),  mean(final_shifts)]
 end
 
 function plot_LDPC_shift_reduction_ratio(n=100)
