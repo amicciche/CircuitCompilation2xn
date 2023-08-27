@@ -1,6 +1,6 @@
 using CircuitCompilation2xn
 using QuantumClifford
-using QuantumClifford.ECC: Steane7, Shor9, naive_syndrome_circuit, encoding_circuit, parity_checks, code_s, code_n, code_k
+using QuantumClifford.ECC: Steane7, Shor9, naive_syndrome_circuit, shor_syndrome_circuit, encoding_circuit, parity_checks, code_s, code_n, code_k
 using CairoMakie
 using Random
 using Statistics
@@ -25,7 +25,7 @@ function test_full_reindex(code)
     new_circuit, data_order = CircuitCompilation2xn.data_ancil_reindex(code)
 
     # Reindex encoding circuit
-    new_ecirc = CircuitCompilation2xn.encoding_reindex(ecirc, data_order)
+    new_ecirc = CircuitCompilation2xn.perfect_reindex(ecirc, data_order)
 
     diff = CircuitCompilation2xn.evaluate(mcirc, new_circuit, ecirc, code_n(code), code_s(code), code_s(code), new_ecirc, data_order)
 
@@ -39,7 +39,7 @@ function test_full_reindex_plot(code, name=string(typeof(code)))
     new_circuit, data_order = CircuitCompilation2xn.data_ancil_reindex(code)
 
     # Reindex encoding circuit
-    new_ecirc = CircuitCompilation2xn.encoding_reindex(ecirc, data_order)
+    new_ecirc = CircuitCompilation2xn.perfect_reindex(ecirc, data_order)
 
     error_rates = 0.000:0.0025:0.08
     H = parity_checks(code)
@@ -84,7 +84,7 @@ function pf_encoding_plot(code, name=string(typeof(code)))
     checks = parity_checks(code)
 
     error_rates = 0.000:0.0025:0.08
-    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(checks, ecirc, scirc, p, p/10) for p in error_rates]
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(checks, ecirc, scirc, p, 0) for p in error_rates]
     x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
     z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
 
@@ -95,14 +95,14 @@ function pf_encoding_plot(code, name=string(typeof(code)))
     new_circuit, data_order = CircuitCompilation2xn.data_ancil_reindex(code)
 
     # Reindex encoding circuit
-    new_ecirc = CircuitCompilation2xn.encoding_reindex(ecirc, data_order)
+    new_ecirc = CircuitCompilation2xn.perfect_reindex(ecirc, data_order)
 
     # Reindex the parity checks via checks[:,parity_reindex]
     dataQubits = size(checks)[2]
     reverse_dict = Dict(value => key for (key, value) in data_order)
     parity_reindex = [reverse_dict[i] for i in collect(1:dataQubits)]
 
-    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(checks[:,parity_reindex], new_ecirc, new_circuit, p, p/100) for p in error_rates]
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(checks[:,parity_reindex], new_ecirc, new_circuit, p, 0) for p in error_rates]
     x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
     z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
 
@@ -327,6 +327,7 @@ function plot_LDPC_shift_reduction_cooc(n=100)
     return f
 end
 
+
 #println("\n######################### Steane7 #########################")
 #test_code(Steane7())
 
@@ -341,11 +342,11 @@ end
 #f_x_Steane, f_z_Steane = pf_encoding_plot(Steane7())
 #f_x_Shor, f_z_Shor = pf_encoding_plot(Shor9())
 
-f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Steane7())
-#plot = CircuitCompilation2xn.vary_shift_errors_plot_pf(Shor9())
+#f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Steane7())
+#f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Shor9())
 
 #plot_3 = encoding_plot_shifts(Steane7())
-#plot_3 = encoding_plot_shifts(Shor9())
+plot_3 = encoding_plot_shifts(Shor9())
 
 #plot = CircuitCompilation2xn.vary_shift_errors_plot(Steane7())
 #plot = CircuitCompilation2xn.vary_shift_errors_plot(Shor9())
@@ -355,10 +356,5 @@ f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Steane7())
 
 #test_full_reindex_plot(Shor9())
 
-
 #plot = plot_LDPC_shift_reduction_shiftPcheck()
 #plot = plot_LDPC_shift_reduction_cooc()
-#code = Shor9()
-#scirc = naive_syndrome_circuit(code)
-#ecirc = encoding_circuit(code)
-#CircuitCompilation2xn.table_logcirc_debug(code, ecirc, scirc)
