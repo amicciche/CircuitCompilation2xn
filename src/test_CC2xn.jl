@@ -378,9 +378,6 @@ end
 #plot_3 = encoding_plot_shifts(Steane7())
 #plot_3 = encoding_plot_shifts(Shor9())
 
-#plot = CircuitCompilation2xn.vary_shift_errors_plot(Steane7())
-#plot = CircuitCompilation2xn.vary_shift_errors_plot(Shor9())
-
 #steane_e, steane_s = test_full_reindex(Steane7())
 #shor_e, shor_s = test_full_reindex(Shor9())
 
@@ -389,7 +386,10 @@ end
 #plot = plot_LDPC_shift_reduction_shiftPcheck()
 #plot = plot_LDPC_shift_reduction_cooc()
 
-f_x_Steane, f_z_Steane = test_shor_circuit_reindexing(Steane7())
+#f_x_Steane, f_z_Steane = test_shor_circuit_reindexing(Steane7())
 #f_x_Shor, f_z_Shor = test_shor_circuit_reindexing(Shor9())
+
+f_x_Steane, f_z_Steane = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Steane7())
+f_x_Shor, f_z_Shor = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Shor9())
 
 # TODO vary_shift_errors_plot_shor_syndrome
