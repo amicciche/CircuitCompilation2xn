@@ -327,6 +327,36 @@ function plot_LDPC_shift_reduction_cooc(n=100)
     return f
 end
 
+function test_shor_circuit_reindexing(code, name=string(typeof(code)))
+    checks = parity_checks(code)
+    cat, scirc = shor_syndrome_circuit(checks)
+    ecirc = encoding_circuit(code)
+
+    error_rates = 0.000:0.0025:0.08
+
+    # TODO need to write code for evaluate_code_decoder_shor_syndrome
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_shor_syndrome(checks, ecirc, cat, scirc, p, 0) for p in error_rates]
+    x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
+    z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
+
+    f_x = CircuitCompilation2xn.plot_code_performance(error_rates, x_error,title="Logical X Error of "*name*" Circuit Shor_Syndrome")
+    f_z = CircuitCompilation2xn.plot_code_performance(error_rates, z_error,title="Logical Z Error of "*name*" Circuit Shor_Syndrome")
+    
+    # anc compile the circuit
+    new_circuit, order = CircuitCompilation2xn.ancil_reindex_pipeline(scirc)
+    new_cat = CircuitCompilation2xn.perfect_reindex(cat,order)
+
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_shor_syndrome(checks, ecirc, new_cat, new_circuit, p, 0) for p in error_rates]
+    x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
+    z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
+
+    new_f_x = CircuitCompilation2xn.plot_code_performance(error_rates, x_error,title="Logical X Error of AncReindex"*name*" Circuit ShorSynd")
+    new_f_z = CircuitCompilation2xn.plot_code_performance(error_rates, z_error,title="Logical Z Error of AncReindex"*name*" Circuit ShorSynd")
+    
+    #return f_x, f_z  
+    
+    return new_f_x, new_f_z
+end
 
 #println("\n######################### Steane7 #########################")
 #test_code(Steane7())
@@ -346,7 +376,7 @@ end
 #f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Shor9())
 
 #plot_3 = encoding_plot_shifts(Steane7())
-plot_3 = encoding_plot_shifts(Shor9())
+#plot_3 = encoding_plot_shifts(Shor9())
 
 #plot = CircuitCompilation2xn.vary_shift_errors_plot(Steane7())
 #plot = CircuitCompilation2xn.vary_shift_errors_plot(Shor9())
@@ -358,3 +388,8 @@ plot_3 = encoding_plot_shifts(Shor9())
 
 #plot = plot_LDPC_shift_reduction_shiftPcheck()
 #plot = plot_LDPC_shift_reduction_cooc()
+
+f_x_Steane, f_z_Steane = test_shor_circuit_reindexing(Steane7())
+#f_x_Shor, f_z_Shor = test_shor_circuit_reindexing(Shor9())
+
+# TODO vary_shift_errors_plot_shor_syndrome

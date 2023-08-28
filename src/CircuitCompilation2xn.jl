@@ -65,7 +65,7 @@ function identity_sort(blockset)
     sort!(blockset, by = x -> (x.elements[1]), rev=true)
     current_value = -1
     current_index = 1
-    while length(indices) < length(blockset) # very inefficient implement TODO -> improve this
+    while length(indices) < length(blockset) # TODO very inefficient implement -> improve this
         if blockset[current_index].elements[1] != current_value && current_index ∉ indices
             push!(sorted, copy(blockset[current_index]))
             push!(indices, current_index)
@@ -561,6 +561,120 @@ function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_in
     end
     x_error = 1 - decoded / nframes
 
+    return x_error, z_error
+end
+
+"""Evaluates a decoder for shor style syndrome circuit"""
+function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, scirc, p_init, p_shift=0 ; nframes=10_000)   
+    lookup_table = create_lookup_table(checks)
+    O = faults_matrix(checks)
+    circuit_Z = Base.copy(scirc)
+    circuit_X = Base.copy(scirc)
+    pre_X = sHadamard(1) # to initialize in x basis
+    
+    constraints, qubits = size(checks)
+    
+    anc_qubits = 0 
+    for pauli in checks
+        anc_qubits += mapreduce(count_ones,+, xview(pauli) .| zview(pauli))
+    end
+
+    regbits = anc_qubits + constraints
+
+    if p_shift != 0       
+        non_mz, mz = clifford_grouper(scirc)
+        non_mz = calculate_shifts(non_mz)
+        circuit_X = []
+        circuit_Z = []
+
+        first_shift = true
+        for subcircuit in non_mz
+            # Shift!
+            if !first_shift
+                append!(circuit_X, [PauliError(i,p_shift) for i in 1:qubits])
+                append!(circuit_Z, [PauliError(i,p_shift) for i in 1:qubits])
+            end
+            append!(circuit_Z, subcircuit)
+            append!(circuit_X, subcircuit)
+            first_shift = false
+        end
+        append!(circuit_X, mz)
+        append!(circuit_Z, mz)
+    end
+
+    md = MixedDestabilizer(checks)
+    logview_Z = [ logicalzview(md);]
+    logcirc_Z = naive_syndrome_circuit(logview_Z)
+
+    logview_X = [ logicalxview(md);]
+    logcirc_X = naive_syndrome_circuit(logview_X)
+    
+    # Z logic circuit
+    for gate in logcirc_Z
+        type = typeof(gate)
+        if type == sMRZ
+            push!(circuit_Z, sMRZ(gate.qubit+anc_qubits, gate.bit+regbits))
+        else 
+            push!(circuit_Z, type(gate.q1, gate.q2+anc_qubits))
+        end
+    end
+
+   # X logic circuit
+    for gate in logcirc_X
+        type = typeof(gate)
+        if type == sMRZ
+            push!(circuit_X, sMRZ(gate.qubit+anc_qubits, gate.bit+regbits))
+        else 
+            push!(circuit_X, type(gate.q1, gate.q2+anc_qubits))
+        end
+    end
+
+    # Z simulation
+    errors = [PauliError(i,p_init) for i in 1:qubits]
+    fullcircuit_Z = vcat(ecirc, errors, cat, circuit_Z)
+
+    frames = PauliFrame(nframes, qubits+anc_qubits+1, regbits+1)
+    pftrajectories(frames, fullcircuit_Z)
+    syndromes = pfmeasurements(frames)[:, anc_qubits+1:regbits]
+    logicalSyndromes = pfmeasurements(frames)[:, regbits+1]
+
+    decoded = 0
+    for i in 1:nframes
+        row = syndromes[i,:]
+        guess = get(lookup_table,row,nothing)
+        if isnothing(guess)
+            continue
+        else
+            result_Z = (O * stab_to_gf2(guess))[2]
+            if result_Z == logicalSyndromes[i]
+                decoded += 1
+            end
+        end
+    end
+    z_error = 1 - decoded / nframes
+    
+    # X simulation
+    fullcircuit_X = vcat(pre_X, ecirc, errors, cat, circuit_X)
+    frames = PauliFrame(nframes, qubits+anc_qubits+1, regbits+1)
+    pftrajectories(frames, fullcircuit_X)
+    syndromes = pfmeasurements(frames)[:, anc_qubits+1:regbits]
+    logicalSyndromes = pfmeasurements(frames)[:, regbits+1]
+
+    decoded = 0
+    for i in 1:nframes
+        row = syndromes[i,:]
+        guess = get(lookup_table,row,nothing)
+        if isnothing(guess)
+            continue
+        else
+            result_X = (O * stab_to_gf2(guess))[1]
+            if result_X == logicalSyndromes[i]
+                decoded += 1   
+            end
+        end
+    end
+    x_error = 1 - decoded / nframes
+    
     return x_error, z_error
 end
 
