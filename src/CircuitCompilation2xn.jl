@@ -152,29 +152,43 @@ function ancil_reindex_pipeline(circuit, inverted=false)
     h2_circuit = perfect_reindex(circuit, h2_order)
     h2_batches = gate_Shuffle(h2_circuit)
 
+    h3_order = ancil_sort_h3(blocks)
+    h3_circuit = perfect_reindex(circuit, h3_order)
+    h3_batches = gate_Shuffle(h3_circuit)
+
     iden_order = identity_sort(blocks)
     iden_circuit = perfect_reindex(circuit, iden_order)
     iden_batches = gate_Shuffle(iden_circuit)
 
     # Returns the best reordered circuit
-    if length(h1_batches)<=length(h2_batches) && length(h1_batches)<=length(iden_batches)
+    if length(h1_batches)<=length(h2_batches) && length(h1_batches)<=length(iden_batches) && length(h1_batches)<=length(h3_batches)
         new_circuit = h1_circuit
         if !inverted
             new_mz = perfect_reindex(measurement_circuit,h1_order)
         end
         order = h1_order
-    elseif length(h2_batches)<=length(h1_batches) && length(h2_batches)<=length(iden_batches)
-        new_circuit = h2_circuit
+        println("H1")
+    elseif length(h2_batches)<=length(h1_batches) && length(h2_batches)<=length(iden_batches) && length(h2_batches)<=length(h3_batches)
+        new_circuit = h2_circuit 
         if !inverted
             new_mz = perfect_reindex(measurement_circuit,h2_order)
         end
         order = h2_order
+        println("H2")
+    elseif length(h3_batches)<=length(h1_batches) && length(h3_batches)<=length(iden_batches) && length(h3_batches)<=length(h2_batches)
+        new_circuit = h3_circuit
+        if !inverted
+            new_mz = perfect_reindex(measurement_circuit,h3_order)
+        end
+        order = h3_order
+        println("H3")
     else 
         new_circuit = iden_circuit
         if !inverted
             new_mz = perfect_reindex(measurement_circuit,iden_order)
         end
         order = iden_order
+        println("IDEN")
     end
 
     if inverted
@@ -259,6 +273,25 @@ function ancil_sort_h2(blockset, startAncil=nothing)
     return order
 end
 
+"""Sorts first by total length of the block visualation and secondarily by the ghost length"""
+function ancil_sort_h3(blockset, startAncil=nothing)
+    if isnothing(startAncil)
+        sort!(blockset, by = x -> (x.ancil), rev=false)
+        currentAncil = blockset[1].ancil
+    else
+        currentAncil = startAncil
+    end
+
+    sort!(blockset, by = x -> (sqrt(x.length^2 + x.ghostlength^2)), rev=true)
+    order = Dict()
+    
+    for block in blockset
+        order[block.ancil] = currentAncil
+        currentAncil += 1
+    end
+    return order
+end
+
 """This function should replace all other reindexing functions, and should work on an entire circuit."""
 function perfect_reindex(circ, order::Dict)
     function new_index(index::Int)
@@ -287,7 +320,7 @@ end
 """[`data_ancil_reindex`](@ref)"""
 function data_ancil_reindex(code::AbstractECC)
     total_qubits = code_s(code)+code_n(code)
-    scirc = naive_syndrome_circuit(code)
+    scirc, _ = naive_syndrome_circuit(code)
     return data_ancil_reindex(scirc, total_qubits)
 end
 
@@ -500,10 +533,10 @@ function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_in
 
     md = MixedDestabilizer(checks)
     logview_Z = [ logicalzview(md);]
-    logcirc_Z = naive_syndrome_circuit(logview_Z)
+    logcirc_Z, _ = naive_syndrome_circuit(logview_Z)
 
     logview_X = [ logicalxview(md);]
-    logcirc_X = naive_syndrome_circuit(logview_X)
+    logcirc_X, _ = naive_syndrome_circuit(logview_X)
     
     # Z logic circuit
     for gate in logcirc_Z
@@ -612,12 +645,13 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, sci
         append!(circuit_Z, mz)
     end
 
+    # TODO make these logical circuits also shor style?
     md = MixedDestabilizer(checks)
     logview_Z = [ logicalzview(md);]
-    logcirc_Z = naive_syndrome_circuit(logview_Z)
+    logcirc_Z, _ = naive_syndrome_circuit(logview_Z)
 
     logview_X = [ logicalxview(md);]
-    logcirc_X = naive_syndrome_circuit(logview_X)
+    logcirc_X, _ = naive_syndrome_circuit(logview_X)
     
     # Z logic circuit
     for gate in logcirc_Z
@@ -783,7 +817,7 @@ end
 """Given a code, plots the compiled version and the original, varrying the probability of the error of the shifts"""
 function vary_shift_errors_plot(code::AbstractECC, name=string(typeof(code)))
     title = name*" Circuit w/ Encoding Circuit"
-    scirc = naive_syndrome_circuit(code)
+    scirc, _ = naive_syndrome_circuit(code)
     ecirc = encoding_circuit(code)
     checks = parity_checks(code)
 
@@ -837,7 +871,7 @@ end
 """Same as [`vary_shift_errors_plot`](@ref) but uses pauli frame simulation"""
 function vary_shift_errors_plot_pf(code::AbstractECC, name=string(typeof(code)))
     title = name*" Circuit w/ Encoding Circuit PF"
-    scirc = naive_syndrome_circuit(code)
+    scirc, _ = naive_syndrome_circuit(code)
     ecirc = encoding_circuit(code)
     checks = parity_checks(code)
 
@@ -932,14 +966,10 @@ end
 function vary_shift_errors_plot_shor_syndrome(code::AbstractECC, name=string(typeof(code)))
     title = name*" Circuit - Shor Syndrome Circuit"
     checks = parity_checks(code)
-    cat, scirc = shor_syndrome_circuit(checks)
+    cat, scirc, anc_qubits, bit_indices = shor_syndrome_circuit(checks)
     ecirc = encoding_circuit(code)
 
     constraints, data_qubits = size(checks)
-    anc_qubits = 0 
-    for pauli in checks
-        anc_qubits += mapreduce(count_ones,+, xview(pauli) .| zview(pauli))
-    end
     total_qubits = anc_qubits + data_qubits
 
     error_rates = 0.000:0.00150:0.12
@@ -1030,4 +1060,25 @@ function vary_shift_errors_plot_shor_syndrome(code::AbstractECC, name=string(typ
     f_z[1,2] = Legend(f_z, ax, "Error Rates")
     return f_x, f_z
 end
-end # module CircuitCompilation2xn
+
+"""Returns a vector which corresponds to what the number of shifts are at different stages of compilation.
+- First returns uncompiled shifts
+- Second returns shifts after gate shuffles
+- Third returns shifts after anc reindexing
+- Fourth returns shifts after data reindexing.
+""" 
+function comp_numbers(circuit, total_qubits)
+    shifts = []
+    a, _ = clifford_grouper(circuit) # only need the two qubit gates
+    push!(shifts, length(calculate_shifts(a)))
+    push!(shifts, length(gate_Shuffle(a)))
+
+    a_anc, _ = ancil_reindex_pipeline(a)
+    push!(shifts, length(calculate_shifts(a_anc))) 
+
+    a_data, = data_ancil_reindex(a, total_qubits)
+    push!(shifts, length(calculate_shifts(a_data)))
+    
+    return shifts
+end
+end # module CircuitCompilation2xns

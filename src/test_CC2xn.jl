@@ -5,10 +5,11 @@ using CairoMakie
 using Random
 using Statistics
 using Distributions
+using NPZ
 
 function test_code(code)
     ecirc = encoding_circuit(code)
-    mcirc = naive_syndrome_circuit(code)
+    mcirc, _ = naive_syndrome_circuit(code)
 
     new_circuit, order = CircuitCompilation2xn.ancil_reindex_pipeline(mcirc)
 
@@ -20,7 +21,7 @@ end
 
 function test_full_reindex(code)
     ecirc = encoding_circuit(code)
-    mcirc = naive_syndrome_circuit(code)
+    mcirc, _ = naive_syndrome_circuit(code)
 
     new_circuit, data_order = CircuitCompilation2xn.data_ancil_reindex(code)
 
@@ -52,7 +53,7 @@ function test_full_reindex_plot(code, name=string(typeof(code)))
 end
 
 function no_encoding_plot(code, name=string(typeof(code)))
-    scirc = naive_syndrome_circuit(code)
+    scirc, _ = naive_syndrome_circuit(code)
 
     error_rates = 0.000:0.0025:0.08
     post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder(parity_checks(code), scirc, p) for p in error_rates]
@@ -65,7 +66,7 @@ function no_encoding_plot(code, name=string(typeof(code)))
 end
 
 function encoding_plot(code, name=string(typeof(code)))
-    scirc = naive_syndrome_circuit(code)
+    scirc, _ = naive_syndrome_circuit(code)
     ecirc = encoding_circuit(code)
 
     error_rates = 0.000:0.0025:0.08
@@ -79,7 +80,7 @@ function encoding_plot(code, name=string(typeof(code)))
 end
 
 function pf_encoding_plot(code, name=string(typeof(code)))
-    scirc = naive_syndrome_circuit(code)
+    scirc, _ = naive_syndrome_circuit(code)
     ecirc = encoding_circuit(code)
     checks = parity_checks(code)
 
@@ -114,7 +115,7 @@ function pf_encoding_plot(code, name=string(typeof(code)))
 end
 
 function encoding_plot_shifts(code, name=string(typeof(code)))
-    scirc = naive_syndrome_circuit(code)
+    scirc, _ = naive_syndrome_circuit(code)
     ecirc = encoding_circuit(code)
 
     error_rates = 0.000:0.00150:0.08
@@ -192,6 +193,37 @@ function test_LDPC_shift_reduction(n,k,w_r, samples=5)
     return [mean(raw_shifts), mean(gate_shuffling_shifts),  mean(final_shifts)]
 end
 
+function test_LDPC_shift_reduction_shor_syndrome(n,k,w_r, samples=5)
+    raw_shifts = []
+    gate_shuffling_shifts = []
+    final_shifts = []
+    for i in 1:samples
+        #matrix  = generate_LDPC_code(n,k,w_r)
+        matrix = rand(Bernoulli(w_r/n), n-k, n) #using this as an approximation
+        stab = Stabilizer(zeros(Bool,n-k, n), matrix)
+        cat, scirc, anc_qubits, bit_indices = shor_syndrome_circuit(stab)
+
+        circuit_wo_mz, measurement_circuit = CircuitCompilation2xn.clifford_grouper(scirc)
+        push!(raw_shifts, length(CircuitCompilation2xn.calculate_shifts(circuit_wo_mz)))
+        
+        push!(gate_shuffling_shifts, length((CircuitCompilation2xn.gate_Shuffle(circuit_wo_mz))))
+        
+        constraints, data_qubits = size(stab)
+        total_qubits = anc_qubits+data_qubits
+
+        # TODO confirm that data ancil reindexing works as expected for these generated LDPC codes
+        final_circ, order = CircuitCompilation2xn.data_ancil_reindex(circuit_wo_mz, total_qubits)
+        push!(final_shifts, length(CircuitCompilation2xn.calculate_shifts(final_circ)))
+    end
+
+    println("\nRow weight: ", w_r)
+    println("Raw shifts: ", mean(raw_shifts))
+    println("After gate shuffling shifts: ", mean(gate_shuffling_shifts))
+    println("After data-ancil reindexing shifts: ", mean(final_shifts))
+
+    return [mean(raw_shifts), mean(gate_shuffling_shifts),  mean(final_shifts)]
+end
+
 function average_cooc(n,k,w_r, samples=5)
     raw_shifts = []
     gate_shuffling_shifts = []
@@ -200,7 +232,7 @@ function average_cooc(n,k,w_r, samples=5)
         #matrix  = generate_LDPC_code(n,k,w_r)
         matrix = rand(Bernoulli(w_r/n), n-k, n) #using this as an approximation
         stab = Stabilizer(zeros(Bool,n-k, n), matrix)
-        scirc = naive_syndrome_circuit(stab)
+        scirc, _ = naive_syndrome_circuit(stab)
         
         circuit_wo_mz, measurement_circuit = CircuitCompilation2xn.clifford_grouper(scirc)
         numGates = length(circuit_wo_mz)
@@ -329,12 +361,11 @@ end
 
 function test_shor_circuit_reindexing(code, name=string(typeof(code)))
     checks = parity_checks(code)
-    cat, scirc = shor_syndrome_circuit(checks)
+    cat, scirc, anc_qubits, bit_indices = shor_syndrome_circuit(checks)
     ecirc = encoding_circuit(code)
 
     error_rates = 0.000:0.0025:0.08
 
-    # TODO need to write code for evaluate_code_decoder_shor_syndrome
     post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_shor_syndrome(checks, ecirc, cat, scirc, p, 0) for p in error_rates]
     x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
     z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
@@ -358,6 +389,63 @@ function test_shor_circuit_reindexing(code, name=string(typeof(code)))
     return new_f_x, new_f_z
 end
 
+function stab_from_cxcz(Cx, Cz)
+    num_x_checks, qubits = size(Cx)
+    num_z_checks, qubits2 = size(Cz)
+    # qubits and qubits2 should be the same value
+    stab = Stabilizer(vcat(zeros(Bool,num_z_checks,qubits),Cx), vcat(Cz, zeros(Bool,num_x_checks,qubits2)) )
+    return stab
+end
+
+function real_LDPC_numbers()
+    println("First one")
+    # Absolute paths to Cx and Cz npz files:
+    Cx = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra1_rb2_X_rankX120_rankZ179_minWtX2_minWtZ2.npz")
+    Cz = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra1_rb2_Z_rankX120_rankZ179_minWtX2_minWtZ2.npz")
+    stab = stab_from_cxcz(Cx,Cz)
+
+    data_qubits = size(stab)[2]
+    scirc, anc_bits, _ = naive_syndrome_circuit(stab)
+    total_qubits = anc_bits+data_qubits
+
+    println("Naive syndrome:", CircuitCompilation2xn.comp_numbers(scirc, total_qubits))
+
+    cat, scirc, anc_bits, _ = shor_syndrome_circuit(stab)
+    total_qubits = anc_bits+data_qubits
+    println("Shor syndrome:", CircuitCompilation2xn.comp_numbers(scirc, total_qubits))
+
+    println("\nSecond one")
+    # Absolute paths to Cx and Cz npz files:
+    Cx = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra2_rb2_X_rankX226_rankZ120_minWtX2_minWtZ2.npz")
+    Cz = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra2_rb2_Z_rankX226_rankZ120_minWtX2_minWtZ2.npz")
+    stab = stab_from_cxcz(Cx,Cz)
+
+    data_qubits = size(stab)[2]
+    scirc, anc_bits, _ = naive_syndrome_circuit(stab)
+    total_qubits = anc_bits+data_qubits
+
+    println("Naive syndrome:", CircuitCompilation2xn.comp_numbers(scirc, total_qubits))
+
+    cat, scirc, anc_bits, _ = shor_syndrome_circuit(stab)
+    total_qubits = anc_bits+data_qubits
+    println("Shor syndrome:", CircuitCompilation2xn.comp_numbers(scirc, total_qubits))
+
+    println("\nThird one")
+    # Absolute paths to Cx and Cz npz files:
+    Cx = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/3_ra1_rb2_X_rankX120_rankZ179_minWtX2_minWtZ2.npz")
+    Cz = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/3_ra1_rb2_Z_rankX120_rankZ179_minWtX2_minWtZ2.npz")
+    stab = stab_from_cxcz(Cx,Cz)
+
+    data_qubits = size(stab)[2]
+    scirc, anc_bits, _ = naive_syndrome_circuit(stab)
+    total_qubits = anc_bits+data_qubits
+
+    println("Naive syndrome:", CircuitCompilation2xn.comp_numbers(scirc, total_qubits))
+
+    cat, scirc, anc_bits, _ = shor_syndrome_circuit(stab)
+    total_qubits = anc_bits+data_qubits
+    println("Shor syndrome:", CircuitCompilation2xn.comp_numbers(scirc, total_qubits))
+end
 #println("\n######################### Steane7 #########################")
 #test_code(Steane7())
 
@@ -389,7 +477,7 @@ end
 #f_x_Steane, f_z_Steane = test_shor_circuit_reindexing(Steane7())
 #f_x_Shor, f_z_Shor = test_shor_circuit_reindexing(Shor9())
 
-f_x_Steane, f_z_Steane = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Steane7())
-f_x_Shor, f_z_Shor = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Shor9())
+#f_x_Steane, f_z_Steane = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Steane7())
+#f_x_Shor, f_z_Shor = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Shor9())
 
-# TODO vary_shift_errors_plot_shor_syndrome
+real_LDPC_numbers()
