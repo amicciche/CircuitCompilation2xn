@@ -4,7 +4,7 @@
 module CircuitCompilation2xn
 using QuantumClifford
 using CairoMakie
-using QuantumClifford.ECC: Steane7, Shor9, naive_syndrome_circuit, shor_syndrome_circuit, encoding_circuit, parity_checks, code_s, code_n, AbstractECC, faults_matrix
+using QuantumClifford.ECC: Steane7, Shor9, naive_syndrome_circuit, shor_syndrome_circuit, naive_encoding_circuit, parity_checks, code_s, code_n, AbstractECC, faults_matrix
 using Statistics
 
 threeRepCode = [sCNOT(1,4),sCNOT(2,4),sCNOT(2,5),sCNOT(3,5)]
@@ -421,7 +421,7 @@ end
 
 """For a given physical bit-flip error rate, parity check matrix, and a lookup table,
 estimate logical error rate, taking into account noisy circuits."""
-function evaluate_code_decoder(code::Stabilizer, circuit,p; samples=1_000)
+function evaluate_code_decoder(code::Stabilizer, circuit,p; samples=5_000)
     lookup_table = create_lookup_table(code)
 
     constraints, qubits = size(code)
@@ -455,7 +455,7 @@ function evaluate_code_decoder(code::Stabilizer, circuit,p; samples=1_000)
 end
 
 """Differs from [`evaluate_code_decoder`](@ref) by using an encoding circuit instead of of a parity matrix for initializing the state"""
-function evaluate_code_decoder_w_ecirc(code::Stabilizer, ecirc, circuit,p; samples=10_000)
+function evaluate_code_decoder_w_ecirc(code::Stabilizer, ecirc, circuit,p; samples=5_000)
     lookup_table = create_lookup_table(code)
 
     constraints, qubits = size(code)
@@ -500,15 +500,23 @@ end
 
 """PauliFrame version of [`evaluate_code_decoder_w_ecirc`](@ref) and [`evaluate_code_decoder_w_ecirc_shifts`](@ref).
 If no p_shift is provided, this runs as if it there were no shift errors."""
-function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_init, p_shift=0 ; nframes=10_000)   
+function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_init, p_shift=0 ; nframes=10_000, encoding_locs=nothing)   
     lookup_table = create_lookup_table(checks)
     O = faults_matrix(checks)
     circuit_Z = Base.copy(scirc)
     circuit_X = Base.copy(scirc)
-    pre_X = sHadamard(1) # to initialize in x basis
+
+    s, n = size(checks)
+    k = n-s
+
+    if encoding_locs == nothing
+        pre_X = [sHadamard(i) for i in n-k+1:n]
+    else
+        pre_X = [sHadamard(i) for i in encoding_locs]
+    end     
     
     constraints, qubits = size(checks)
-    regbits = constraints # This is an assumption for now
+    regbits = constraints # This only holds for naive syndrome measuement
 
     if p_shift != 0       
         non_mz, mz = clifford_grouper(scirc)
@@ -533,7 +541,7 @@ function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_in
 
     md = MixedDestabilizer(checks)
     logview_Z = [ logicalzview(md);]
-    logcirc_Z, _ = naive_syndrome_circuit(logview_Z)
+    logcirc_Z, numLogBits, _ = naive_syndrome_circuit(logview_Z) # numLogBits shoudl equal k
 
     logview_X = [ logicalxview(md);]
     logcirc_X, _ = naive_syndrome_circuit(logview_X)
@@ -562,10 +570,10 @@ function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_in
     errors = [PauliError(i,p_init) for i in 1:qubits]
     fullcircuit_Z = vcat(ecirc, errors, circuit_Z)
 
-    frames = PauliFrame(nframes, qubits+constraints+1, regbits+1)
+    frames = PauliFrame(nframes, qubits+constraints+k, regbits+k)
     pftrajectories(frames, fullcircuit_Z)
     syndromes = pfmeasurements(frames)[:, 1:regbits]
-    logicalSyndromes = pfmeasurements(frames)[:, regbits+1]
+    logicalSyndromes = pfmeasurements(frames)[:, regbits+1: regbits+k] 
 
     decoded = 0
     for i in 1:nframes
@@ -574,8 +582,8 @@ function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_in
         if isnothing(guess)
             continue
         else
-            result_Z = (O * stab_to_gf2(guess))[2]
-            if result_Z == logicalSyndromes[i]
+            result_Z = (O * stab_to_gf2(guess))[k+1:2k]
+            if result_Z == logicalSyndromes[i,:]
                 decoded += 1
             end
         end
@@ -584,10 +592,10 @@ function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_in
     
     # X simulation
     fullcircuit_X = vcat(pre_X, ecirc, errors, circuit_X)
-    frames = PauliFrame(nframes, qubits+constraints+1, regbits+1)
+    frames = PauliFrame(nframes, qubits+constraints+k, regbits+k)
     pftrajectories(frames, fullcircuit_X)
     syndromes = pfmeasurements(frames)[:, 1:regbits]
-    logicalSyndromes = pfmeasurements(frames)[:, regbits+1]
+    logicalSyndromes = pfmeasurements(frames)[:, regbits+1: regbits+k]
 
     decoded = 0
     for i in 1:nframes
@@ -596,8 +604,8 @@ function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_in
         if isnothing(guess)
             continue
         else
-            result_X = (O * stab_to_gf2(guess))[1]
-            if result_X == logicalSyndromes[i]
+            result_X = (O * stab_to_gf2(guess))[1:k]
+            if result_X == logicalSyndromes[i, :]
                 decoded += 1
             end
         end
@@ -607,7 +615,7 @@ function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_in
     return x_error, z_error
 end
 
-"""Evaluates a decoder for shor style syndrome circuit"""
+"""Evaluates a decoder for shor style syndrome circuit""" # TODO does not work with k>1, look to the above function for how to fix this
 function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, scirc, p_init, p_shift=0 ; nframes=10_000)   
     lookup_table = create_lookup_table(checks)
     O = faults_matrix(checks)
@@ -872,7 +880,7 @@ end
 function vary_shift_errors_plot_pf(code::AbstractECC, name=string(typeof(code)))
     title = name*" Circuit w/ Encoding Circuit PF"
     scirc, _ = naive_syndrome_circuit(code)
-    ecirc = encoding_circuit(code)
+    ecirc = naive_encoding_circuit(code)
     checks = parity_checks(code)
 
     error_rates = 0.000:0.00150:0.12

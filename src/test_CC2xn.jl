@@ -1,11 +1,12 @@
 using CircuitCompilation2xn
 using QuantumClifford
-using QuantumClifford.ECC: Steane7, Shor9, naive_syndrome_circuit, shor_syndrome_circuit, encoding_circuit, parity_checks, code_s, code_n, code_k
+using QuantumClifford.ECC: Steane7, Shor9, naive_syndrome_circuit, shor_syndrome_circuit, parity_checks, code_s, code_n, code_k
 using CairoMakie
 using Random
 using Statistics
 using Distributions
 using NPZ
+using QuantumClifford.ECC: naive_encoding_circuit, Cleve8, AbstractECC
 
 function test_code(code)
     ecirc = encoding_circuit(code)
@@ -52,12 +53,25 @@ function test_full_reindex_plot(code, name=string(typeof(code)))
     return f1
 end
 
+function no_encoding_plot(code::Stabilizer, name=string(typeof(code)))
+    scirc, _ = naive_syndrome_circuit(code)
+
+    error_rates = 0.000:0.0025:0.08
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder(code, scirc, p) for p in error_rates]
+    f1 = CircuitCompilation2xn.plot_code_performance(error_rates, post_ec_error_rates,title="Original "*name*" Circuit - Syndrome Circuit")
+
+    new_circuit, order = CircuitCompilation2xn.ancil_reindex_pipeline(scirc)
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder(code, new_circuit, p) for p in error_rates]
+    f2 = CircuitCompilation2xn.plot_code_performance(error_rates, post_ec_error_rates,title="Reordered "*name*" Circuit - Syndrome Circuit")
+    return f1, f2
+end
+
 function no_encoding_plot(code, name=string(typeof(code)))
     scirc, _ = naive_syndrome_circuit(code)
 
     error_rates = 0.000:0.0025:0.08
     post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder(parity_checks(code), scirc, p) for p in error_rates]
-    f1 = CircuitCompilation2xn.plot_code_performance(error_rates, post_ec_error_rates,title="Original "*name*" Circuit - Syndrome Circuit")
+    f1 = CircuitCompilation2xn.plot_code_performance(error_rates, post_ec_error_rates,title=""*name*" Circuit - No Encoding")
 
     new_circuit, order = CircuitCompilation2xn.ancil_reindex_pipeline(scirc)
     post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder(parity_checks(code), new_circuit, p) for p in error_rates]
@@ -66,23 +80,29 @@ function no_encoding_plot(code, name=string(typeof(code)))
 end
 
 function encoding_plot(code, name=string(typeof(code)))
+    checks = parity_checks(code)
     scirc, _ = naive_syndrome_circuit(code)
     ecirc = encoding_circuit(code)
 
     error_rates = 0.000:0.0025:0.08
-    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc(parity_checks(code), ecirc, scirc, p) for p in error_rates]
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc(checks, ecirc, scirc, p) for p in error_rates]
     f1 = CircuitCompilation2xn.plot_code_performance(error_rates, post_ec_error_rates,title="Original "*name*" Circuit w/ Encoding Circuit")
 
     new_circuit, order = CircuitCompilation2xn.ancil_reindex_pipeline(scirc)
-    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc(parity_checks(code), ecirc, new_circuit, p) for p in error_rates]
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc(checks, ecirc, new_circuit, p) for p in error_rates]
     f2 = CircuitCompilation2xn.plot_code_performance(error_rates, post_ec_error_rates,title="Reordered "*name*" Circuit w/ Encoding Circuit")
     return f1, f2
 end
 
-function pf_encoding_plot(code, name=string(typeof(code)))
-    scirc, _ = naive_syndrome_circuit(code)
-    ecirc = encoding_circuit(code)
+function pf_encoding_plot(code::AbstractECC, name=string(typeof(code)))
     checks = parity_checks(code)
+    pf_encoding_plot(checks, name)
+end
+
+function pf_encoding_plot(checks, name="")
+    reduced_checks = copy(stabilizerview(MixedDestabilizer(checks)))
+    scirc, _ = naive_syndrome_circuit(checks)
+    ecirc = naive_encoding_circuit(reduced_checks)
 
     error_rates = 0.000:0.0025:0.08
     post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(checks, ecirc, scirc, p, 0) for p in error_rates]
@@ -91,26 +111,35 @@ function pf_encoding_plot(code, name=string(typeof(code)))
 
     f_x = CircuitCompilation2xn.plot_code_performance(error_rates, x_error,title="Logical X Error of "*name*" Circuit PF")
     f_z = CircuitCompilation2xn.plot_code_performance(error_rates, z_error,title="Logical Z Error of "*name*" Circuit PF")
+
+    #return f_x, f_z
     
     # Data-anc compile the circuit
-    new_circuit, data_order = CircuitCompilation2xn.data_ancil_reindex(code)
+    s, n = size(checks)
+    k = n-s
+    new_circuit, data_order = CircuitCompilation2xn.data_ancil_reindex(scirc, s+n)
+
+    # Calculate locations of encoding qubits
+    encoding_locs = []
+    for i in n-k+1:n
+        push!(encoding_locs, data_order[i])
+    end
 
     # Reindex encoding circuit
     new_ecirc = CircuitCompilation2xn.perfect_reindex(ecirc, data_order)
 
     # Reindex the parity checks via checks[:,parity_reindex]
-    dataQubits = size(checks)[2]
+    dataQubits = n
     reverse_dict = Dict(value => key for (key, value) in data_order)
     parity_reindex = [reverse_dict[i] for i in collect(1:dataQubits)]
 
-    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(checks[:,parity_reindex], new_ecirc, new_circuit, p, 0) for p in error_rates]
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_w_ecirc_pf(checks[:,parity_reindex], new_ecirc, new_circuit, p, 0, encoding_locs=encoding_locs) for p in error_rates]
     x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
     z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
 
     new_f_x = CircuitCompilation2xn.plot_code_performance(error_rates, x_error,title="Logical X Error of "*name*" Circuit PF")
     new_f_z = CircuitCompilation2xn.plot_code_performance(error_rates, z_error,title="Logical Z Error of "*name*" Circuit PF")
-    
-    #return f_x, f_z
+
     return new_f_x, new_f_z
 end
 
@@ -397,51 +426,55 @@ function stab_from_cxcz(Cx, Cz)
     return stab
 end
 
+function getGoodLDPC(n=1)
+    stab = nothing
+    # Absolute paths to Cx and Cz npz files:
+    if n==1
+        Cx = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra1_rb2_X_rankX120_rankZ179_minWtX2_minWtZ2.npz");
+        Cz = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra1_rb2_Z_rankX120_rankZ179_minWtX2_minWtZ2.npz");
+        stab = stab_from_cxcz(Cx,Cz);
+    elseif n==2
+        Cx = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra2_rb2_X_rankX226_rankZ120_minWtX2_minWtZ2.npz");
+        Cz = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra2_rb2_Z_rankX226_rankZ120_minWtX2_minWtZ2.npz");
+        stab = stab_from_cxcz(Cx,Cz);
+    elseif n==3
+        Cx = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/3_ra1_rb2_X_rankX120_rankZ179_minWtX2_minWtZ2.npz");
+        Cz = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/3_ra1_rb2_Z_rankX120_rankZ179_minWtX2_minWtZ2.npz");
+        stab = stab_from_cxcz(Cx,Cz);
+    end
+    return stab
+end
+
 function real_LDPC_numbers()
     println("First one")
-    # Absolute paths to Cx and Cz npz files:
-    Cx = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra1_rb2_X_rankX120_rankZ179_minWtX2_minWtZ2.npz")
-    Cz = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra1_rb2_Z_rankX120_rankZ179_minWtX2_minWtZ2.npz")
-    stab = stab_from_cxcz(Cx,Cz)
-
+    stab = getGoodLDPC(1);
     data_qubits = size(stab)[2]
     scirc, anc_bits, _ = naive_syndrome_circuit(stab)
     total_qubits = anc_bits+data_qubits
 
     println("Naive syndrome:", CircuitCompilation2xn.comp_numbers(scirc, total_qubits))
-
     cat, scirc, anc_bits, _ = shor_syndrome_circuit(stab)
     total_qubits = anc_bits+data_qubits
     println("Shor syndrome:", CircuitCompilation2xn.comp_numbers(scirc, total_qubits))
 
     println("\nSecond one")
-    # Absolute paths to Cx and Cz npz files:
-    Cx = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra2_rb2_X_rankX226_rankZ120_minWtX2_minWtZ2.npz")
-    Cz = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra2_rb2_Z_rankX226_rankZ120_minWtX2_minWtZ2.npz")
-    stab = stab_from_cxcz(Cx,Cz)
-
+    stab = getGoodLDPC(2);
     data_qubits = size(stab)[2]
     scirc, anc_bits, _ = naive_syndrome_circuit(stab)
     total_qubits = anc_bits+data_qubits
 
     println("Naive syndrome:", CircuitCompilation2xn.comp_numbers(scirc, total_qubits))
-
     cat, scirc, anc_bits, _ = shor_syndrome_circuit(stab)
     total_qubits = anc_bits+data_qubits
     println("Shor syndrome:", CircuitCompilation2xn.comp_numbers(scirc, total_qubits))
 
     println("\nThird one")
-    # Absolute paths to Cx and Cz npz files:
-    Cx = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/3_ra1_rb2_X_rankX120_rankZ179_minWtX2_minWtZ2.npz")
-    Cz = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/3_ra1_rb2_Z_rankX120_rankZ179_minWtX2_minWtZ2.npz")
-    stab = stab_from_cxcz(Cx,Cz)
-
+    stab = getGoodLDPC(3);
     data_qubits = size(stab)[2]
     scirc, anc_bits, _ = naive_syndrome_circuit(stab)
     total_qubits = anc_bits+data_qubits
 
     println("Naive syndrome:", CircuitCompilation2xn.comp_numbers(scirc, total_qubits))
-
     cat, scirc, anc_bits, _ = shor_syndrome_circuit(stab)
     total_qubits = anc_bits+data_qubits
     println("Shor syndrome:", CircuitCompilation2xn.comp_numbers(scirc, total_qubits))
@@ -456,12 +489,18 @@ end
 
 #orig, new = encoding_plot(Steane7())
 #orig, new = encoding_plot(Shor9())
+#orig, new = encoding_plot(Cleve8())
 
 #f_x_Steane, f_z_Steane = pf_encoding_plot(Steane7())
 #f_x_Shor, f_z_Shor = pf_encoding_plot(Shor9())
+f_x_Cleve, f_z_Cleve = pf_encoding_plot(Cleve8())
+#f_x, f_z = pf_encoding_plot(getGoodLDPC(1), "LDPC1")
+#f_x, f_z = pf_encoding_plot(getGoodLDPC(2), "LDPC2")
+#f_x, f_z = pf_encoding_plot(getGoodLDPC(3), "LDPC3")
 
 #f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Steane7())
 #f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Shor9())
+#f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Cleve8())
 
 #plot_3 = encoding_plot_shifts(Steane7())
 #plot_3 = encoding_plot_shifts(Shor9())
@@ -479,5 +518,3 @@ end
 
 #f_x_Steane, f_z_Steane = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Steane7())
 #f_x_Shor, f_z_Shor = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Shor9())
-
-real_LDPC_numbers()
