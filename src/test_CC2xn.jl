@@ -112,7 +112,7 @@ function pf_encoding_plot(checks, name="")
     f_x = CircuitCompilation2xn.plot_code_performance(error_rates, x_error,title="Logical X Error of "*name*" Circuit PF")
     f_z = CircuitCompilation2xn.plot_code_performance(error_rates, z_error,title="Logical Z Error of "*name*" Circuit PF")
 
-    #return f_x, f_z
+    return f_x, f_z
     
     # Data-anc compile the circuit
     s, n = size(checks)
@@ -140,7 +140,7 @@ function pf_encoding_plot(checks, name="")
     new_f_x = CircuitCompilation2xn.plot_code_performance(error_rates, x_error,title="Logical X Error of "*name*" Circuit PF")
     new_f_z = CircuitCompilation2xn.plot_code_performance(error_rates, z_error,title="Logical Z Error of "*name*" Circuit PF")
 
-    return new_f_x, new_f_z
+    #return new_f_x, new_f_z
 end
 
 function encoding_plot_shifts(code, name=string(typeof(code)))
@@ -493,12 +493,12 @@ end
 
 #f_x_Steane, f_z_Steane = pf_encoding_plot(Steane7())
 #f_x_Shor, f_z_Shor = pf_encoding_plot(Shor9())
-f_x_Cleve, f_z_Cleve = pf_encoding_plot(Cleve8())
+#f_x_Cleve, f_z_Cleve = pf_encoding_plot(Cleve8())
 #f_x, f_z = pf_encoding_plot(getGoodLDPC(1), "LDPC1")
 #f_x, f_z = pf_encoding_plot(getGoodLDPC(2), "LDPC2")
 #f_x, f_z = pf_encoding_plot(getGoodLDPC(3), "LDPC3")
 
-#f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Steane7())
+f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Steane7())
 #f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Shor9())
 #f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Cleve8())
 
