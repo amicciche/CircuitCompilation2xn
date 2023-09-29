@@ -498,7 +498,7 @@ end
 #f_x, f_z = pf_encoding_plot(getGoodLDPC(2), "LDPC2")
 #f_x, f_z = pf_encoding_plot(getGoodLDPC(3), "LDPC3")
 
-f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Steane7())
+#f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Steane7())
 #f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Shor9())
 #f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Cleve8())
 
@@ -516,5 +516,6 @@ f_x, f_z = CircuitCompilation2xn.vary_shift_errors_plot_pf(Steane7())
 #f_x_Steane, f_z_Steane = test_shor_circuit_reindexing(Steane7())
 #f_x_Shor, f_z_Shor = test_shor_circuit_reindexing(Shor9())
 
-#f_x_Steane, f_z_Steane = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Steane7())
-#f_x_Shor, f_z_Shor = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Shor9())
+f_x_Steane, f_z_Steane = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Steane7())
+f_x_Shor, f_z_Shor = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Shor9())
+f_x_Cleve, f_z_Cleve = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Cleve8())

@@ -612,22 +612,28 @@ function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_in
     return x_error, z_error
 end
 
-"""Evaluates a decoder for shor style syndrome circuit""" # TODO does not work with k>1, look to the above function for how to fix this
-function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, scirc, p_init, p_shift=0 ; nframes=10_000)   
+"""Evaluates a decoder for shor style syndrome circuit"""
+function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, scirc, p_init, p_shift=0 ; nframes=10_000, encoding_locs=nothing)   
     lookup_table = create_lookup_table(checks)
     O = faults_matrix(checks)
     circuit_Z = Base.copy(scirc)
     circuit_X = Base.copy(scirc)
-    pre_X = sHadamard(1) # to initialize in x basis
-    
-    constraints, qubits = size(checks)
-    
+
+    s, n = size(checks)
+    k = n-s
+
+    if isnothing(encoding_locs)
+        pre_X = [sHadamard(i) for i in n-k+1:n]
+    else
+        pre_X = [sHadamard(i) for i in encoding_locs]
+    end 
+        
     anc_qubits = 0 
     for pauli in checks
         anc_qubits += mapreduce(count_ones,+, xview(pauli) .| zview(pauli))
     end
 
-    regbits = anc_qubits + constraints
+    regbits = anc_qubits + s
 
     if p_shift != 0       
         non_mz, mz = clifford_grouper(scirc)
@@ -639,8 +645,8 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, sci
         for subcircuit in non_mz
             # Shift!
             if !first_shift
-                append!(circuit_X, [PauliError(i,p_shift) for i in 1:qubits]) # TODO this should be on the ancilary qubits, see above funciton
-                append!(circuit_Z, [PauliError(i,p_shift) for i in 1:qubits])
+                append!(circuit_X, [PauliError(i,p_shift) for i in n+1:n+anc_qubits])
+                append!(circuit_Z, [PauliError(i,p_shift) for i in n+1:n+anc_qubits])
             end
             append!(circuit_Z, subcircuit)
             append!(circuit_X, subcircuit)
@@ -679,13 +685,13 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, sci
     end
 
     # Z simulation
-    errors = [PauliError(i,p_init) for i in 1:qubits]
+    errors = [PauliError(i,p_init) for i in 1:n]
     fullcircuit_Z = vcat(ecirc, errors, cat, circuit_Z)
 
-    frames = PauliFrame(nframes, qubits+anc_qubits+1, regbits+1)
+    frames = PauliFrame(nframes, n+anc_qubits+k, regbits+k)
     pftrajectories(frames, fullcircuit_Z)
     syndromes = pfmeasurements(frames)[:, anc_qubits+1:regbits]
-    logicalSyndromes = pfmeasurements(frames)[:, regbits+1]
+    logicalSyndromes = pfmeasurements(frames)[:, regbits+1:regbits+k]
 
     decoded = 0
     for i in 1:nframes
@@ -694,8 +700,8 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, sci
         if isnothing(guess)
             continue
         else
-            result_Z = (O * stab_to_gf2(guess))[2]
-            if result_Z == logicalSyndromes[i]
+            result_Z = (O * stab_to_gf2(guess))[k+1:2k]
+            if result_Z == logicalSyndromes[i,:]
                 decoded += 1
             end
         end
@@ -704,10 +710,10 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, sci
     
     # X simulation
     fullcircuit_X = vcat(pre_X, ecirc, errors, cat, circuit_X)
-    frames = PauliFrame(nframes, qubits+anc_qubits+1, regbits+1)
+    frames = PauliFrame(nframes, n+anc_qubits+k, regbits+k)
     pftrajectories(frames, fullcircuit_X)
     syndromes = pfmeasurements(frames)[:, anc_qubits+1:regbits]
-    logicalSyndromes = pfmeasurements(frames)[:, regbits+1]
+    logicalSyndromes = pfmeasurements(frames)[:, regbits+1:regbits+k]
 
     decoded = 0
     for i in 1:nframes
@@ -716,8 +722,8 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, sci
         if isnothing(guess)
             continue
         else
-            result_X = (O * stab_to_gf2(guess))[1]
-            if result_X == logicalSyndromes[i]
+            result_X = (O * stab_to_gf2(guess))[1:k]
+            if result_X == logicalSyndromes[i, :]
                 decoded += 1   
             end
         end
@@ -984,7 +990,7 @@ function vary_shift_errors_plot_shor_syndrome(code::AbstractECC, name=string(typ
     title = name*" Circuit - Shor Syndrome Circuit"
     checks = parity_checks(code)
     cat, scirc, anc_qubits, bit_indices = shor_syndrome_circuit(checks)
-    ecirc = encoding_circuit(code)
+    ecirc = naive_encoding_circuit(code)
 
     constraints, data_qubits = size(checks)
     total_qubits = anc_qubits + data_qubits
@@ -1019,12 +1025,21 @@ function vary_shift_errors_plot_shor_syndrome(code::AbstractECC, name=string(typ
     renewed_ecirc = perfect_reindex(ecirc, data_order)
     renewed_cat = perfect_reindex(cat, data_order)
 
+    # Data + Anc Compiled circuit
+    s, n = size(checks)
+    k = n-s
+
+    encoding_locs = []
+    for i in n-k+1:n
+        push!(encoding_locs, data_order[i])
+    end
+
     reverse_dict = Dict(value => key for (key, value) in data_order)
     parity_reindex = [reverse_dict[i] for i in collect(1:data_qubits)]
     renewed_checks = checks[:,parity_reindex] 
-    full_compiled_post_ec_error_rates_s0 = [evaluate_code_decoder_shor_syndrome(renewed_checks, renewed_ecirc, renewed_cat, renewed_circuit, p, 0) for p in error_rates]
-    full_compiled_post_ec_error_rates_s10 = [evaluate_code_decoder_shor_syndrome(renewed_checks, renewed_ecirc, renewed_cat, renewed_circuit, p, p/10) for p in error_rates]
-    full_compiled_post_ec_error_rates_s100 = [evaluate_code_decoder_shor_syndrome(renewed_checks, renewed_ecirc, renewed_cat, renewed_circuit, p, p) for p in error_rates]
+    full_compiled_post_ec_error_rates_s0 = [evaluate_code_decoder_shor_syndrome(renewed_checks, renewed_ecirc, renewed_cat, renewed_circuit, p, 0, encoding_locs = encoding_locs) for p in error_rates]
+    full_compiled_post_ec_error_rates_s10 = [evaluate_code_decoder_shor_syndrome(renewed_checks, renewed_ecirc, renewed_cat, renewed_circuit, p, p/10, encoding_locs = encoding_locs) for p in error_rates]
+    full_compiled_post_ec_error_rates_s100 = [evaluate_code_decoder_shor_syndrome(renewed_checks, renewed_ecirc, renewed_cat, renewed_circuit, p, p, encoding_locs = encoding_locs) for p in error_rates]
     full_compiled_x_error_s0 = [full_compiled_post_ec_error_rates_s0[i][1] for i in eachindex(full_compiled_post_ec_error_rates_s0)]
     full_compiled_z_error_s0 = [full_compiled_post_ec_error_rates_s0[i][2] for i in eachindex(full_compiled_post_ec_error_rates_s0)]
     full_compiled_x_error_s10 = [full_compiled_post_ec_error_rates_s10[i][1] for i in eachindex(full_compiled_post_ec_error_rates_s10)]
