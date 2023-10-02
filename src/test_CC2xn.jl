@@ -6,7 +6,7 @@ using Random
 using Statistics
 using Distributions
 using NPZ
-using QuantumClifford.ECC: naive_encoding_circuit, Cleve8, AbstractECC
+using QuantumClifford.ECC: naive_encoding_circuit, Cleve8, AbstractECC, Perfect5
 
 function test_code(code)
     ecirc = naive_encoding_circuit(code)
@@ -186,12 +186,13 @@ end
 #orig, new = encoding_plot(Cleve8())
 
 #f_x_Steane, f_z_Steane = pf_encoding_plot(Steane7())
-#f_x_Shor, f_z_Shor = pf_encoding_plot(Shor9())
+#f_x_Shor, f_z_Shor = pf_encoding_plot(Perfect5())
 #f_x_Cleve, f_z_Cleve = pf_encoding_plot(Cleve8())
 
 #f_x_Steane, f_z_Steane = CircuitCompilation2xn.vary_shift_errors_plot_pf(Steane7())
 #f_x_Shor, f_z_Shor = CircuitCompilation2xn.vary_shift_errors_plot_pf(Shor9())
 #f_x_Cleve, f_z_Cleve = CircuitCompilation2xn.vary_shift_errors_plot_pf(Cleve8())
+#f_x_P5, f_z_P5 = CircuitCompilation2xn.vary_shift_errors_plot_pf(Perfect5())
 
 #plot_3 = encoding_plot_shifts(Steane7())
 #plot_3 = encoding_plot_shifts(Shor9())
@@ -204,9 +205,10 @@ end
 #f_x_Steane, f_z_Steane = test_shor_circuit_reindexing(Steane7())
 #f_x_Shor, f_z_Shor = test_shor_circuit_reindexing(Shor9())
 
-f_x_Steane, f_z_Steane = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Steane7())
-f_x_Shor, f_z_Shor = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Shor9())
-f_x_Cleve, f_z_Cleve = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Cleve8())
+#f_x_Steane, f_z_Steane = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Steane7())
+#f_x_Shor, f_z_Shor = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Shor9())
+#f_x_Cleve, f_z_Cleve = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Cleve8())
+#f_x_P5, f_z_P5 = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Perfect5())
 
 ######################### LDPC land #########################
 #f_x, f_z = pf_encoding_plot(CircuitCompilation2xn.getGoodLDPC(1), "LDPC1")
@@ -215,3 +217,8 @@ f_x_Cleve, f_z_Cleve = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrom
 
 #plot = CircuitCompilation2xn.plot_LDPC_shift_reduction_shiftPcheck()
 #plot = CircuitCompilation2xn.plot_LDPC_shift_reduction_cooc()
+
+#f_x_Steane, f_z_Steane = CircuitCompilation2xn.realistic_noise_logical_physical_error(Steane7())
+#f_x_Shor, f_z_Shor = CircuitCompilation2xn.realistic_noise_logical_physical_error(Shor9())
+#f_x_Cleve, f_z_Cleve = CircuitCompilation2xn.realistic_noise_logical_physical_error(Cleve8())
+f_x_P5, f_z_P5 = CircuitCompilation2xn.realistic_noise_logical_physical_error(Perfect5())

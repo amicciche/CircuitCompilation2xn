@@ -125,7 +125,7 @@ function inverter(circ, total_qubits)
         elseif gate_type == QuantumClifford.ClassicalXOR
             push!(new_circ, gate)
         else
-            println("ERROR TRIED TO INVERT SOMETHING ILL DEFINED:", gate_type)
+            println("WARNING TRIED TO INVERT SOMETHING ILL DEFINED:", gate_type)
             push!(new_circ,gate)
         end
     end
@@ -312,7 +312,7 @@ function perfect_reindex(circ, order::Dict)
         elseif gate_type == QuantumClifford.ClassicalXOR
             push!(new_circ, gate)
         else
-            println("ERROR TRIED TO REINDEX SOMETHING ILL DEFINED:", gate_type)
+            println("WARNING TRIED TO REINDEX SOMETHING ILL DEFINED:", gate_type)
             push!(new_circ,gate)
         end
     end

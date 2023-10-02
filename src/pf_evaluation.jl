@@ -1,5 +1,9 @@
 """PauliFrame version of [`evaluate_code_decoder_w_ecirc`](@ref) and [`evaluate_code_decoder_w_ecirc_shifts`](@ref).
-If no p_shift is provided, this runs as if it there were no shift errors."""
+If no p_shift is provided, this runs as if it there were no shift errors. Some parameters:
+*  P_init = probability of an initial error after encoding
+*  P_shift = probability that a shift induces an error - was less than 0.01 in "Shuttling an Electron Spin through a Silicon Quantum Dot Array"
+*  P_wait = probability that waiting causes a qubit to decohere
+"""
 function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_init, p_shift=0 ; nframes=10_000, encoding_locs=nothing)   
     lookup_table = create_lookup_table(checks)
     O = faults_matrix(checks)
@@ -339,7 +343,7 @@ function vary_shift_errors_plot_pf(checks::Stabilizer, name="")
     return f_x, f_z
 end
 
-"""Same as [`vary_shift_errors_plot`](@ref) but uses pauli frame simulation""" # TODO needs to be updated to match above - new encoding circuits broke this
+"""Same as [`vary_shift_errors_plot`](@ref) but uses pauli frame simulation"""
 function vary_shift_errors_plot_shor_syndrome(code::AbstractECC, name=string(typeof(code)))
     title = name*" Circuit - Shor Syndrome Circuit"
     checks = parity_checks(code)
@@ -443,6 +447,73 @@ function vary_shift_errors_plot_shor_syndrome(code::AbstractECC, name=string(typ
     scatter!(error_rates, full_compiled_z_error_s10, label="Data + anc compiled circuit with shift errors = p/10", color=:green, marker=:utriangle)
     scatter!(error_rates, full_compiled_z_error_s100, label="Data + anc compiled circuit with shift errors = p", color=:green, marker=:star8)
     
+    f_z[1,2] = Legend(f_z, ax, "Error Rates")
+    return f_x, f_z
+end
+
+
+"""Same as [`vary_shift_errors_plot`](@ref) but uses pauli frame simulation"""
+function realistic_noise_logical_physical_error(code::AbstractECC, p_shift=0.01, name=string(typeof(code)))
+    title = name*" Circuit - Shor Syndrome Circuit"
+    checks = parity_checks(code)
+    cat, scirc, anc_qubits, bit_indices = shor_syndrome_circuit(checks)
+    ecirc = naive_encoding_circuit(code)
+
+    error_rates = 0.000:0.00150:0.12
+    # Uncompiled errors 
+    post_ec_error_rates_s0 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, cat, scirc, p, p_shift) for p in error_rates]
+    post_ec_error_rates_s1 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, cat, scirc, p, p_shift/10) for p in error_rates]
+    post_ec_error_rates_s2 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, cat, scirc, p, p_shift/100) for p in error_rates]
+    x_error_s0 = [post_ec_error_rates_s0[i][1] for i in eachindex(post_ec_error_rates_s0)]
+    z_error_s0 = [post_ec_error_rates_s0[i][2] for i in eachindex(post_ec_error_rates_s0)]
+    x_error_s1 = [post_ec_error_rates_s1[i][1] for i in eachindex(post_ec_error_rates_s1)]
+    z_error_s1 = [post_ec_error_rates_s1[i][2] for i in eachindex(post_ec_error_rates_s1)]
+    x_error_s2 = [post_ec_error_rates_s2[i][1] for i in eachindex(post_ec_error_rates_s2)]
+    z_error_s2 = [post_ec_error_rates_s2[i][2] for i in eachindex(post_ec_error_rates_s2)]
+
+    # Anc Compiled circuit
+    new_circuit, order = ancil_reindex_pipeline(scirc)
+    new_cat = perfect_reindex(cat, order)
+    compiled_post_ec_error_rates_s0 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, new_cat, new_circuit, p, p_shift) for p in error_rates]
+    compiled_post_ec_error_rates_s1 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, new_cat, new_circuit, p, p_shift/10) for p in error_rates]
+    compiled_post_ec_error_rates_s2 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, new_cat, new_circuit, p, p_shift/100) for p in error_rates]
+    compiled_x_error_s0 = [compiled_post_ec_error_rates_s0[i][1] for i in eachindex(compiled_post_ec_error_rates_s0)]
+    compiled_z_error_s0 = [compiled_post_ec_error_rates_s0[i][2] for i in eachindex(compiled_post_ec_error_rates_s0)]
+    compiled_x_error_s1 = [compiled_post_ec_error_rates_s1[i][1] for i in eachindex(compiled_post_ec_error_rates_s1)]
+    compiled_z_error_s1 = [compiled_post_ec_error_rates_s1[i][2] for i in eachindex(compiled_post_ec_error_rates_s1)]
+    compiled_x_error_s2 = [compiled_post_ec_error_rates_s2[i][1] for i in eachindex(compiled_post_ec_error_rates_s2)]
+    compiled_z_error_s2 = [compiled_post_ec_error_rates_s2[i][2] for i in eachindex(compiled_post_ec_error_rates_s2)]
+
+    f_x = Figure(resolution=(1100,900))
+    ax = f_x[1,1] = Axis(f_x, xlabel="single (qu)bit error rate",title=title*" Logical X")
+    lim = max(error_rates[end])
+    lines!([0,lim], [0,lim], label="single bit", color=:black)
+
+    # Uncompiled Plots
+    scatter!(error_rates, x_error_s0, label="Gate shuffled (GS) with realistic shift (p=0.01) errors", color=:red, marker=:star8)
+    scatter!(error_rates, x_error_s1, label="GS with optimisitic shift (p=0.001) errors", color=:red, marker=:utriangle)
+    scatter!(error_rates, x_error_s2, label="GS with very optimisitic shift (p=0.0001) errors", color=:red, marker=:rect)
+    # Compiled Plots
+    scatter!(error_rates, compiled_x_error_s0, label="Anc compiled (AC) + GS with realistic shift (p=0.01) errors", color=:blue, marker=:star8)
+    scatter!(error_rates, compiled_x_error_s1, label="AC+GS with optimisitic shift (p=0.001) errors", color=:blue, marker=:utriangle)
+    scatter!(error_rates, compiled_x_error_s2, label="AC+GS with very optimisitic shift (p=0.0001)) errors", color=:blue, marker=:rect)
+    
+    f_x[1,2] = Legend(f_x, ax, "Error Rates")
+
+    f_z = Figure(resolution=(1100,900))
+    ax = f_z[1,1] = Axis(f_z, xlabel="single (qu)bit error rate",title=title*" Logical Z")
+    lim = max(error_rates[end])
+    lines!([0,lim], [0,lim], label="single bit", color=:black)
+
+    # Uncompiled Plots
+    scatter!(error_rates, z_error_s0, label="Gate shuffled (GS) with realistic shift (p=0.01) errors", color=:red, marker=:star8)
+    scatter!(error_rates, z_error_s1, label="GS with optimisitic shift (p=0.001) errors", color=:red, marker=:utriangle)
+    scatter!(error_rates, z_error_s2, label="GS with very optimisitic shift (p=0.0001) errors", color=:red, marker=:rect)
+    # Compiled Plots
+    scatter!(error_rates, compiled_z_error_s0, label="Anc compiled(AC) + GS with realistic shift (p=0.01) errors", color=:blue, marker=:star8)
+    scatter!(error_rates, compiled_z_error_s1, label="AC+GS with optimisitic shift (p=0.001) errors", color=:blue, marker=:utriangle)
+    scatter!(error_rates, compiled_z_error_s2, label="AC+GS  with very optimisitic shift (p=0.0001)) errors", color=:blue, marker=:rect)
+
     f_z[1,2] = Legend(f_z, ax, "Error Rates")
     return f_x, f_z
 end
