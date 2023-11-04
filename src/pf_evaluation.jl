@@ -589,7 +589,7 @@ function realistic_noise_vary_params(code::AbstractECC, p_shift=0.01, p_wait=1-e
 end
 
 """This function requires that the X checks be on top of the checks tableau"""
-function evaluate_code_decoder_FTecirc_pf_krishna(Cx, Cz, checks, scirc, p_init, p_shift=0 ; nframes=1000, encoding_locs=nothing)   
+function evaluate_code_decoder_FTecirc_pf_krishna(Cx, Cz, checks, scirc, p_init, p_shift=0 ; nframes=1_000, encoding_locs=nothing)   
     O = faults_matrix(checks)
     circuit_Z = Base.copy(scirc)
     circuit_X = Base.copy(scirc)
@@ -666,8 +666,9 @@ function evaluate_code_decoder_FTecirc_pf_krishna(Cx, Cz, checks, scirc, p_init,
         end
     end
 
-    # Z simulation
     errors = [PauliError(i,p_init) for i in 1:n]
+
+    # Z simulation
     ecirc = fault_tolerant_encoding(circuit_Z)
     fullcircuit_Z = vcat(ecirc, errors, circuit_Z)
 
@@ -682,8 +683,8 @@ function evaluate_code_decoder_FTecirc_pf_krishna(Cx, Cz, checks, scirc, p_init,
         row_x = row[1:numchecks_X]
         row_z = row[numchecks_X+1:numchecks_X+numchecks_Z] 
         
-        KguessX, success = syndrome_decode(sparse(Cx), sparse(Cx'), row_x, max_iters, Base.copy(channel_probs), Base.copy(b2c_X), Base.copy(c2b_X), Base.copy(log_probabs), Base.copy(err))
-        KguessZ, success = syndrome_decode(sparse(Cz), sparse(Cz'), row_z, max_iters, Base.copy(channel_probs), Base.copy(b2c_Z), Base.copy(c2b_Z), Base.copy(log_probabs), Base.copy(err))
+        KguessX, success = syndrome_decode(sparse(Cx), sparse(Cx'), row_x, max_iters, channel_probs, b2c_X, c2b_X, log_probabs, Base.copy(err))
+        KguessZ, success = syndrome_decode(sparse(Cz), sparse(Cz'), row_z, max_iters, channel_probs, b2c_Z, c2b_Z, log_probabs, Base.copy(err))
         guess = vcat(KguessZ, KguessX)
         
         result_Z = (O * (guess))[k+1:2k]
@@ -696,6 +697,7 @@ function evaluate_code_decoder_FTecirc_pf_krishna(Cx, Cz, checks, scirc, p_init,
     # X simulation
     ecirc = fault_tolerant_encoding(circuit_X)
     fullcircuit_X = vcat(pre_X, ecirc, errors, circuit_X)
+
     frames = PauliFrame(nframes, n+s+k, s+k)
     pftrajectories(frames, fullcircuit_X)
     syndromes = pfmeasurements(frames)[:, 1:s]
@@ -707,8 +709,8 @@ function evaluate_code_decoder_FTecirc_pf_krishna(Cx, Cz, checks, scirc, p_init,
         row_x = row[1:numchecks_X]
         row_z = row[numchecks_X+1:numchecks_X+numchecks_Z]
 
-        KguessX, success = syndrome_decode(sparse(Cx), sparse(Cx'), row_x, max_iters, Base.copy(channel_probs), Base.copy(b2c_X), Base.copy(c2b_X), Base.copy(log_probabs), Base.copy(err))
-        KguessZ, success = syndrome_decode(sparse(Cz), sparse(Cz'), row_z, max_iters, Base.copy(channel_probs), Base.copy(b2c_Z), Base.copy(c2b_Z), Base.copy(log_probabs), Base.copy(err))
+        KguessX, success = syndrome_decode(sparse(Cx), sparse(Cx'), row_x, max_iters, channel_probs, b2c_X, c2b_X, log_probabs, Base.copy(err))
+        KguessZ, success = syndrome_decode(sparse(Cz), sparse(Cz'), row_z, max_iters, channel_probs, b2c_Z, c2b_Z, log_probabs, Base.copy(err))
         guess = vcat(KguessZ, KguessX)
         
         result_X = (O * (guess))[1:k]

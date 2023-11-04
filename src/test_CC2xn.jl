@@ -220,7 +220,7 @@ end
 #f_x_Shor, f_z_Shor = CircuitCompilation2xn.realistic_noise_logical_physical_error(Shor9())
 #f_x_Cleve, f_z_Cleve = CircuitCompilation2xn.realistic_noise_logical_physical_error(Cleve8())
 #f_x_P5, f_z_P5 = CircuitCompilation2xn.realistic_noise_logical_physical_error(Perfect5())
-f_x_P5, f_z_P5 = CircuitCompilation2xn.realistic_noise_vary_params(Perfect5())
+#f_x_P5, f_z_P5 = CircuitCompilation2xn.realistic_noise_vary_params(Perfect5())
 
 function pf_encoding_plot_krishna(Cx, Cz, code::AbstractECC, name=string(typeof(code)))
     checks = parity_checks(code)
@@ -228,7 +228,8 @@ function pf_encoding_plot_krishna(Cx, Cz, code::AbstractECC, name=string(typeof(
 end
 function pf_encoding_plot_krishna(Cx, Cz, checks, name="")
     scirc, _ = naive_syndrome_circuit(checks)
-    error_rates = exp10.(range(-5,-0.1,length=50))
+    #scirc, _ = CircuitCompilation2xn.ancil_reindex_pipeline(scirc)
+    error_rates = exp10.(range(-5,-1,length=50))
     post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_FTecirc_pf_krishna(Cx, Cz, checks, scirc, p, 0) for p in error_rates]
     
     x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
@@ -245,5 +246,6 @@ end
 #Cz_Steane = stab_to_gf2(parity_checks(Steane7()))[4:6,8:14]
 #f_x_Steane, f_z_Steane = pf_encoding_plot_krishna(Cx_Steane, Cz_Steane, Steane7())
 
-#stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(1)
-#f_x , f_z = pf_encoding_plot_krishna(Cx, Cz, stab, "LDPC 2")
+ldpc_num = 1
+stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(ldpc_num)
+f_x , f_z = pf_encoding_plot_krishna(Cx, Cz, stab, "LDPC "*string(ldpc_num)) # TODO LDPC 2 isn't working.... (all zero syndrome)
