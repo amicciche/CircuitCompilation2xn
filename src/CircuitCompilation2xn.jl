@@ -8,6 +8,8 @@ using QuantumClifford.ECC: Steane7, Shor9, naive_syndrome_circuit, shor_syndrome
 using Statistics
 using Distributions
 using NPZ
+using LDPCDecoders
+using SparseArrays
 
 threeRepCode = [sCNOT(1,4),sCNOT(2,4),sCNOT(2,5),sCNOT(3,5)]
 k4_example = [sCNOT(1,4),sCNOT(3,4),sCNOT(2,5),sCNOT(2,4),sCNOT(2,7),sCNOT(3,6),sCNOT(3,5)]
@@ -448,6 +450,23 @@ function plot_code_performance(error_rates, post_ec_error_rates; title="")
     plot!(error_rates, post_ec_error_rates, label="after decoding", color=:black)
     xlims!(0,lim)
     ylims!(0,lim)
+    f[1,2] = Legend(f, ax, "Error Rates")
+    f
+end
+
+"""Taken from the QEC Seminar notebook for plotting logical vs physical error"""
+function plot_code_performance_log_log(error_rates, post_ec_error_rates; title="")
+    error_rates = log10.(error_rates)
+    post_ec_error_rates = log10.(post_ec_error_rates)
+
+    f = Figure(resolution=(500,300))
+    ax = f[1,1] = Axis(f, xlabel="Log10 of single (qu)bit error rate", ylabel="Log10 of logical error rate", title=title)
+    #lim = max(error_rates[end],post_ec_error_rates[end])
+    
+    lines!([-5,0], [-5,0], label="single bit", color=:black)
+    plot!(error_rates, post_ec_error_rates, label="after decoding", color=:black)
+    xlims!(-5,0)
+    ylims!(-5,0)
     f[1,2] = Legend(f, ax, "Error Rates")
     f
 end

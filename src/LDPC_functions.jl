@@ -2,7 +2,7 @@ function stab_from_cxcz(Cx, Cz)
     num_x_checks, qubits = size(Cx)
     num_z_checks, qubits2 = size(Cz)
     # qubits and qubits2 should be the same value
-    stab = Stabilizer(vcat(zeros(Bool,num_z_checks,qubits),Cx), vcat(Cz, zeros(Bool,num_x_checks,qubits2)) )
+    stab = Stabilizer(vcat(Cx,zeros(Bool,num_z_checks,qubits)), vcat(zeros(Bool,num_x_checks,qubits2), Cz) )
     return stab
 end
 
@@ -22,7 +22,7 @@ function getGoodLDPC(n=1)
         Cz = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/3_ra1_rb2_Z_rankX120_rankZ179_minWtX2_minWtZ2.npz");
         stab = stab_from_cxcz(Cx,Cz);
     end
-    return stab
+    return stab, Cx, Cz
 end
 
 function real_LDPC_numbers()
