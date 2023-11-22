@@ -7,7 +7,6 @@ function stab_from_cxcz(Cx, Cz)
 end
 
 function getGoodLDPC(n=1)
-    stab = nothing
     # Absolute paths to Cx and Cz npz files:
     if n==1
         Cx = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra1_rb2_X_rankX120_rankZ179_minWtX2_minWtZ2.npz");
