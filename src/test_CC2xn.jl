@@ -177,6 +177,22 @@ function test_shor_circuit_reindexing(code, name=string(typeof(code)))
     return new_f_x, new_f_z
 end
 
+function test_shor_circuit_with_FTencode(code, name=string(typeof(code)))
+    checks = parity_checks(code)
+    cat, scirc, anc_qubits, bit_indices = shor_syndrome_circuit(checks)
+    ecirc = naive_encoding_circuit(code)
+
+    error_rates = 0.000:0.0025:0.08
+
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_FTencode_FTsynd_Krishna(checks, cat, scirc, p, 0) for p in error_rates]
+    x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
+    z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
+
+    f_x = CircuitCompilation2xn.plot_code_performance(error_rates, x_error,title="Logical X Error of "*name*" Circuit Shor_Syndrome")
+    f_z = CircuitCompilation2xn.plot_code_performance(error_rates, z_error,title="Logical Z Error of "*name*" Circuit Shor_Syndrome")
+
+    return f_x, f_z
+end
 #test_code(Steane7())
 #test_code(Shor9())
 
@@ -209,10 +225,6 @@ end
 #f_x_P5, f_z_P5 = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Perfect5())
 
 ######################### LDPC land #########################
-#f_x, f_z = pf_encoding_plot(CircuitCompilation2xn.getGoodLDPC(1)[1], "LDPC1")
-#f_x, f_z = pf_encoding_plot(CircuitCompilation2xn.getGoodLDPC(2), "LDPC2")
-#f_x, f_z = pf_encoding_plot(CircuitCompilation2xn.getGoodLDPC(3), "LDPC3")
-
 #plot = CircuitCompilation2xn.plot_LDPC_shift_reduction_shiftPcheck()
 #plot = CircuitCompilation2xn.plot_LDPC_shift_reduction_cooc()
 ######################### LDPC land #########################
@@ -221,7 +233,7 @@ end
 #f_x_Shor, f_z_Shor = CircuitCompilation2xn.realistic_noise_logical_physical_error(Shor9())
 #f_x_Cleve, f_z_Cleve = CircuitCompilation2xn.realistic_noise_logical_physical_error(Cleve8())
 #f_x_P5, f_z_P5 = CircuitCompilation2xn.realistic_noise_logical_physical_error(Perfect5())
-f_x_P5, f_z_P5 = CircuitCompilation2xn.realistic_noise_vary_params(Perfect5())
+#f_x_P5, f_z_P5 = CircuitCompilation2xn.realistic_noise_vary_params(Perfect5())
 
 function pf_encoding_plot_krishna(Cx, Cz, code::AbstractECC, name=string(typeof(code)))
     checks = parity_checks(code)
@@ -229,7 +241,7 @@ function pf_encoding_plot_krishna(Cx, Cz, code::AbstractECC, name=string(typeof(
 end
 function pf_encoding_plot_krishna(Cx, Cz, checks, name="")
     scirc, _ = naive_syndrome_circuit(checks)
-    #scirc, _ = CircuitCompilation2xn.ancil_reindex_pipeline(scirc)
+
     error_rates = exp10.(range(-5,-1,length=50))
     post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_FTecirc_pf_krishna(Cx, Cz, checks, scirc, p, 0) for p in error_rates]
 
@@ -243,10 +255,61 @@ function pf_encoding_plot_krishna(Cx, Cz, checks, name="")
     return f_x, f_z
 end
 
+function pf_encoding_plot_shor_krishna(Cx, Cz, checks, name="")
+    cat, scirc, anc_qubits, bit_indices = shor_syndrome_circuit(checks)
+
+    error_rates = exp10.(range(-5,-1,length=50))
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_FTencode_FTsynd_Krishna(Cx, Cz, checks, cat, scirc, p, 0) for p in error_rates]
+
+    x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
+    z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
+
+    println(x_error); println(z_error)
+
+    f_x = CircuitCompilation2xn.plot_code_performance_log_log(error_rates, x_error,title="Logical X Error of "*name*" Circuit ShorSynd")
+    f_z = CircuitCompilation2xn.plot_code_performance_log_log(error_rates, z_error,title="Logical Z Error of "*name*" Circuit ShorSynd")
+    return f_x, f_z
+end
+
 #Cx_Steane = stab_to_gf2(parity_checks(Steane7()))[1:3,1:7]
 #Cz_Steane = stab_to_gf2(parity_checks(Steane7()))[4:6,8:14]
 #f_x_Steane, f_z_Steane = pf_encoding_plot_krishna(Cx_Steane, Cz_Steane, Steane7())
 
-ldpc_num = 1
+#ldpc_num = 1
 #stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(ldpc_num)
 #f_x , f_z = pf_encoding_plot_krishna(Cx, Cz, stab, "LDPC "*string(ldpc_num)) 
+
+#Cx_Steane = stab_to_gf2(parity_checks(Steane7()))[1:3,1:7]
+#Cz_Steane = stab_to_gf2(parity_checks(Steane7()))[4:6,8:14]
+#f_x_Steane, f_z_Steane = pf_encoding_plot_shor_krishna(Cx_Steane, Cz_Steane, parity_checks(Steane7()))
+
+function test_LDPC_shor_circuit_reindexing(Cx, Cz, checks, name=string(typeof(code)))
+    cat, scirc, anc_qubits, bit_indices = shor_syndrome_circuit(checks)
+
+    error_rates = exp10.(range(-5,-1,length=50))
+
+    # anc compile the circuit
+    new_circuit, order = CircuitCompilation2xn.ancil_reindex_pipeline(scirc)
+    new_cat = CircuitCompilation2xn.perfect_reindex(cat,order)
+
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_FTencode_FTsynd_Krishna(Cx, Cz, checks, new_cat, new_circuit, p, 0) for p in error_rates]
+    x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
+    z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
+
+    new_f_x = CircuitCompilation2xn.plot_code_performance_log_log(error_rates, x_error,title="Logical X Error of AncReindex"*name*" Circuit ShorSynd")
+    new_f_z = CircuitCompilation2xn.plot_code_performance_log_log(error_rates, z_error,title="Logical Z Error of AncReindex"*name*" Circuit ShorSynd")
+
+    return new_f_x, new_f_z
+end
+
+ldpc_num = 1
+stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(ldpc_num)
+f_x , f_z = test_LDPC_shor_circuit_reindexing(Cx, Cz, stab, "LDPC "*string(ldpc_num)) 
+
+#Cx_Steane = stab_to_gf2(parity_checks(Steane7()))[1:3,1:7]
+#Cz_Steane = stab_to_gf2(parity_checks(Steane7()))[4:6,8:14]
+#f_x, f_z = CircuitCompilation2xn.realistic_noise_logical_physical_error_ldpc(Cx_Steane, Cz_Steane, parity_checks(Steane7()), name="Steane LDPC")
+
+#ldpc_num = 1
+#stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(ldpc_num)
+#f_x , f_z = CircuitCompilation2xn.realistic_noise_logical_physical_error_ldpc(Cx, Cz, stab, name="LDPC "*string(ldpc_num)) 

@@ -54,7 +54,7 @@ function create_blocks(circuit)
     return blockset    
 end
 
-# This function is really just for testing purposes
+# This function is really just for testing purposes - I think only for shor syndrome?
 function staircase(blockset)
     i = 1
     for block in blockset
