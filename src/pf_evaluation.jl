@@ -1,10 +1,57 @@
-"""PauliFrame version of [`evaluate_code_decoder_w_ecirc`](@ref) and [`evaluate_code_decoder_w_ecirc_shifts`](@ref).
-If no p_shift is provided, this runs as if it there were no shift errors. Some parameters:
-*  P_init = probability of an initial error after encoding
-*  P_shift = probability that a shift induces an error - was less than 0.01 in "Shuttling an Electron Spin through a Silicon Quantum Dot Array"
-*  P_wait = probability that waiting causes a qubit to decohere
+"""Generate a lookup table for decoding single qubit errors."""
+function create_lookup_table(code::Stabilizer)
+    lookup_table = Dict()
+    constraints, qubits = size(code)
+    # In the case of no errors
+    lookup_table[ zeros(UInt8, constraints) ] = zero(PauliOperator, qubits)
+    # In the case of single bit errors
+    for bit_to_be_flipped in 1:qubits
+        for error_type in [single_x, single_y, single_z]
+            # Generate e⃗
+            error = error_type(qubits, bit_to_be_flipped)
+            # Calculate s⃗
+            # (check which stabilizer rows do not commute with the Pauli error)
+            syndrome = comm(error, code)
+            # Store s⃗ → e⃗
+            lookup_table[syndrome] = error
+        end
+    end
+    lookup_table
+end
+
 """
-function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_init, p_shift=0 ; nframes=10_000, encoding_locs=nothing)
+Wrapper for using QuantumClifford's naive_encoding_circuit function
+"""
+function evaluate_code_decoder_w_ecirc_pf(checks, ecirc, scirc, p_init, p_shift; nframes=10_000, encoding_locs=nothing)
+    s, n = size(checks)
+    if p_shift != 0
+        non_mz, mz = clifford_grouper(scirc)
+        non_mz = calculate_shifts(non_mz)
+        scirc = []
+
+        first_shift = true
+        for subcircuit in non_mz
+            # Shift!
+            if !first_shift
+                append!(scirc, [PauliError(i,p_shift) for i in n+1:n+s])
+            end
+            append!(scirc, subcircuit)
+            first_shift = false
+        end
+        append!(scirc, mz)
+    end
+
+    return naive_error_correction_pipeline(checks, p_init, ecirc=ecirc, scirc=scirc, nframes=nframes, encoding_locs=encoding_locs)
+end
+""" Most simple simulation function
+* Uses a lookup table decoder over single qubit errors ['create_lookup_table'](@ref)
+* Uses ['naive_syndrome_circuit'](@ref)
+Returns a logical X and Z error for the provided p_error - physical error rate per qubit
+"""
+function naive_error_correction_pipeline(checks::Stabilizer, p_error; nframes=10_000, ecirc=nothing, encoding_locs=nothing, scirc=nothing)
+    if isnothing(scirc)
+        scirc , _= naive_syndrome_circuit(checks)
+    end
     lookup_table = create_lookup_table(checks)
     O = faults_matrix(checks)
     circuit_Z = Base.copy(scirc)
@@ -18,31 +65,10 @@ function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_in
     else
         pre_X = [sHadamard(i) for i in encoding_locs]
     end
-
-    if p_shift != 0
-        non_mz, mz = clifford_grouper(scirc)
-        non_mz = calculate_shifts(non_mz)
-        circuit_X = []
-        circuit_Z = []
-
-        first_shift = true
-        for subcircuit in non_mz
-            # Shift!
-            if !first_shift
-                append!(circuit_X, [PauliError(i,p_shift) for i in n+1:n+s])
-                append!(circuit_Z, [PauliError(i,p_shift) for i in n+1:n+s])
-            end
-            append!(circuit_Z, subcircuit)
-            append!(circuit_X, subcircuit)
-            first_shift = false
-        end
-        append!(circuit_X, mz)
-        append!(circuit_Z, mz)
-    end
-
+    
     md = MixedDestabilizer(checks)
     logview_Z = [ logicalzview(md);]
-    logcirc_Z, numLogBits, _ = naive_syndrome_circuit(logview_Z) # numLogBits shoudl equal k
+    logcirc_Z, _ = naive_syndrome_circuit(logview_Z) # numLogBits shoudl equal k
 
     logview_X = [ logicalxview(md);]
     logcirc_X, _ = naive_syndrome_circuit(logview_X)
@@ -68,9 +94,13 @@ function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_in
     end
 
     # Z simulation
-    errors = [PauliError(i,p_init) for i in 1:n]
-    ecirc = fault_tolerant_encoding(circuit_Z) # double syndrome encoding
-    fullcircuit_Z = vcat(ecirc, errors, circuit_Z)
+    errors = [PauliError(i,p_error) for i in 1:n]
+    if isnothing(ecirc)
+        ecirc_z = fault_tolerant_encoding(circuit_Z) # double syndrome encoding
+    else
+        ecirc_z = ecirc
+    end
+    fullcircuit_Z = vcat(ecirc_z, errors, circuit_Z)
 
     frames = PauliFrame(nframes, n+s+k, s+k)
     pftrajectories(frames, fullcircuit_Z)
@@ -93,8 +123,12 @@ function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_in
     z_error = 1 - decoded / nframes
 
     # X simulation
-    ecirc = fault_tolerant_encoding(circuit_X)  # double syndrome encoding
-    fullcircuit_X = vcat(pre_X, ecirc, errors, circuit_X)
+    if isnothing(ecirc)
+        ecirc_x = fault_tolerant_encoding(circuit_X)  # double syndrome encoding
+    else
+        ecirc_x = ecirc
+    end
+    fullcircuit_X = vcat(pre_X, ecirc_x, errors, circuit_X)
     frames = PauliFrame(nframes, n+s+k, s+k)
     pftrajectories(frames, fullcircuit_X)
     syndromes = pfmeasurements(frames)[:, 1:s]
@@ -118,13 +152,56 @@ function evaluate_code_decoder_w_ecirc_pf(checks::Stabilizer, ecirc, scirc, p_in
     return x_error, z_error
 end
 
-"""Evaluates lookup table decoder for shor style syndrome circuit.
+"""Evaluates lookup table decoder for shor style syndrome circuit. Wrapper for ['shor_error_correction_pipeline'](@ref)
 If no p_shift is provided, this runs as if it there were no shift errors. Some parameters:
 *  P_init = probability of an initial error after encoding
 *  P_shift = probability that a shift induces an error - was less than 0.01 in "Shuttling an Electron Spin through a Silicon Quantum Dot Array"
 *  P_wait = probability that waiting causes a qubit to decohere
 """
-function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, scirc, p_init, p_shift=0, p_wait=0; nframes=1_000, encoding_locs=nothing)
+function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, scirc, p_init, p_shift=0, p_wait=0; nframes=10_000, encoding_locs=nothing)
+    s, n = size(checks)
+    anc_qubits = 0
+    for pauli in checks
+        anc_qubits += mapreduce(count_ones,+, xview(pauli) .| zview(pauli))
+    end
+
+    if p_shift != 0
+        non_mz, mz = clifford_grouper(scirc)
+        non_mz = calculate_shifts(non_mz)
+        scirc = []
+
+        first_shift = true
+        for subcircuit in non_mz
+            # Shift!
+            if !first_shift
+                # Errors due to shifting the data/ancilla row - whichever is smallest
+                # TODO right now hardcoded to shift the data qubits.
+                #append!(scirc, [PauliError(i,p_shift) for i in n+1:n+anc_qubits])
+                append!(scirc, [PauliError(i,p_shift) for i in 1:n])
+            end
+            append!(scirc, subcircuit)
+            first_shift = false
+
+            # Errors due to waiting for the next shuttle -> should this be on all qubits? Maybe the p_shift includes this for ancilla already?
+            # TODO Should this be random Pauli error or just Z error?
+            #append!(scirc, [PauliError(i,p_wait) for i in 1:n])
+            append!(scirc, [PauliError(i,p_wait) for i in n+1:n+anc_qubits])
+        end
+        append!(scirc, mz)
+    end
+    return shor_error_correction_pipeline(checks, p_init, cat=cat, scirc=scirc, nframes=nframes, ecirc=ecirc, encoding_locs=encoding_locs)
+end
+
+""" Similiar to ['naive_error_correction_pipeline'](@ref) but now uses shor style fault tolerant syndrome measurement
+* Uses a lookup table decoder over single qubit errors ['create_lookup_table'](@ref)
+* Uses ['shor_syndrome_circuit'](@ref)
+Returns a logical X and Z error for the provided p_error - physical error rate per qubit
+"""
+function shor_error_correction_pipeline(checks::Stabilizer, p_init; nframes=10_000, cat=nothing, scirc=nothing, ecirc=nothing, encoding_locs=nothing)
+    if isnothing(scirc) || isnothing(cat)
+        cat, scirc, _ = shor_syndrome_circuit(checks)
+    end
+
     lookup_table = create_lookup_table(checks)
     O = faults_matrix(checks)
     circuit_Z = Base.copy(scirc)
@@ -143,40 +220,7 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, sci
     for pauli in checks
         anc_qubits += mapreduce(count_ones,+, xview(pauli) .| zview(pauli))
     end
-
     regbits = anc_qubits + s
-
-    if p_shift != 0
-        non_mz, mz = clifford_grouper(scirc)
-        non_mz = calculate_shifts(non_mz)
-        circuit_X = []
-        circuit_Z = []
-
-        first_shift = true
-        for subcircuit in non_mz
-            # Shift!
-            if !first_shift
-                # Errors due to shifting the data/ancilla row - whichever is smallest
-                # TODO right now hardcoded to shift the data qubits.
-                #append!(circuit_X, [PauliError(i,p_shift) for i in n+1:n+anc_qubits])
-                #append!(circuit_Z, [PauliError(i,p_shift) for i in n+1:n+anc_qubits])
-                append!(circuit_X, [PauliError(i,p_shift) for i in 1:n])
-                append!(circuit_Z, [PauliError(i,p_shift) for i in 1:n])
-            end
-            append!(circuit_Z, subcircuit)
-            append!(circuit_X, subcircuit)
-            first_shift = false
-
-            # Errors due to waiting for the next shuttle -> should this be on all qubits? Maybe the p_shift includes this for ancilla already?
-            # TODO Should this be random Pauli error or just Z error?
-            #append!(circuit_X, [PauliError(i,p_wait) for i in 1:n])
-            #append!(circuit_Z, [PauliError(i,p_wait) for i in 1:n])
-            append!(circuit_X, [PauliError(i,p_wait) for i in n+1:n+anc_qubits])
-            append!(circuit_Z, [PauliError(i,p_wait) for i in n+1:n+anc_qubits])
-        end
-        append!(circuit_X, mz)
-        append!(circuit_Z, mz)
-    end
 
     md = MixedDestabilizer(checks)
     logview_Z = logicalzview(md)
@@ -207,8 +251,14 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, sci
 
     # Z simulation
     errors = [PauliError(i,p_init) for i in 1:n]
-    fullcircuit_Z = vcat(ecirc, errors, cat, circuit_Z)
-
+    if isnothing(ecirc)
+        ecirc_z = fault_tolerant_encoding(vcat(cat,circuit_Z)) # double syndrome encoding
+        fullcircuit_Z = vcat(ecirc_z, errors, circuit_Z)
+    else
+        ecirc_z = ecirc
+        fullcircuit_Z = vcat(ecirc_z, errors, cat, circuit_Z)
+    end
+    
     frames = PauliFrame(nframes, n+anc_qubits+k, regbits+k)
     pftrajectories(frames, fullcircuit_Z)
     syndromes = pfmeasurements(frames)[:, anc_qubits+1:regbits]
@@ -230,7 +280,14 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, sci
     z_error = 1 - decoded / nframes
 
     # X simulation
-    fullcircuit_X = vcat(pre_X, ecirc, errors, cat, circuit_X)
+    if isnothing(ecirc)
+        ecirc_x = fault_tolerant_encoding(vcat(cat,circuit_X)) # double syndrome encoding
+        fullcircuit_X = vcat(pre_X, ecirc_x, errors, circuit_X)
+    else
+        ecirc_x = ecirc
+        fullcircuit_X = vcat(pre_X, ecirc_x, errors, cat, circuit_X)
+    end
+    
     frames = PauliFrame(nframes, n+anc_qubits+k, regbits+k)
     pftrajectories(frames, fullcircuit_X)
     syndromes = pfmeasurements(frames)[:, anc_qubits+1:regbits]
@@ -254,7 +311,8 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, sci
     return x_error, z_error
 end
 
-"""Takes a circuit and adds a pf noise op after each two qubit gate, correspond to the provided fidelity"""
+# This might be mathematically wrong. In practicy I've treated p_error = 1 - gate_fidelity
+"""Takes a circuit and adds a pf noise op after each two qubit gate, correspond to the provided error probability."""
 function add_two_qubit_gate_noise(circuit, p_error)
     new_circuit = []
     for gate in circuit
@@ -595,7 +653,7 @@ function realistic_noise_vary_params(code::AbstractECC, p_shift=0.01, p_wait=1-e
     return f_x, f_z
 end
 
-"""Uses fault tolerant encoding, but naive syndrome measurement on an ECC with a Cx and Cz matrix
+"""Only wroks with fault tolerant encoding, but naive syndrome measurement on an ECC with a Cx and Cz matrix
 - The X checks must come before the Z checks in the Stabilizer tableaux
 """
 function evaluate_code_decoder_FTecirc_pf_krishna(Cx, Cz, checks, scirc, p_init, p_shift=0 ; nframes=1_000, encoding_locs=nothing, max_iters = 25)

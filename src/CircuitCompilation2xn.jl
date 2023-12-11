@@ -419,27 +419,6 @@ function evaluate(oldcirc, newcirc, ecirc, dataqubits, ancqubits, regbits, new_e
     return diff
 end
 
-"""Generate a lookup table for decoding single qubit errors. Maps s⃗ → e⃗."""
-function create_lookup_table(code::Stabilizer)
-    lookup_table = Dict()
-    constraints, qubits = size(code)
-    # In the case of no errors
-    lookup_table[ zeros(UInt8, constraints) ] = zero(PauliOperator, qubits)
-    # In the case of single bit errors
-    for bit_to_be_flipped in 1:qubits
-        for error_type in [single_x, single_y, single_z]
-            # Generate e⃗
-            error = error_type(qubits, bit_to_be_flipped)
-            # Calculate s⃗
-            # (check which stabilizer rows do not commute with the Pauli error)
-            syndrome = comm(error, code)
-            # Store s⃗ → e⃗
-            lookup_table[syndrome] = error
-        end
-    end
-    lookup_table
-end
-
 """Taken from the QEC Seminar notebook for plotting logical vs physical error"""
 function plot_code_performance(error_rates, post_ec_error_rates; title="")
     f = Figure(resolution=(500,300))
