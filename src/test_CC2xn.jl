@@ -219,10 +219,10 @@ end
 #f_x_Steane, f_z_Steane = test_shor_circuit_reindexing(Steane7())
 #f_x_Shor, f_z_Shor = test_shor_circuit_reindexing(Shor9())
 
-f_x_Steane, f_z_Steane = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Steane7())
-f_x_Shor, f_z_Shor = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Shor9())
-f_x_Cleve, f_z_Cleve = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Cleve8())
-f_x_P5, f_z_P5 = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Perfect5())
+ #f_x_Steane, f_z_Steane = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Steane7())
+ #f_x_Shor, f_z_Shor = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Shor9())
+ #f_x_Cleve, f_z_Cleve = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Cleve8())
+ #f_x_P5, f_z_P5 = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Perfect5())
 
 ######################### LDPC land #########################
 #plot = CircuitCompilation2xn.plot_LDPC_shift_reduction_shiftPcheck()
@@ -233,7 +233,7 @@ f_x_P5, f_z_P5 = CircuitCompilation2xn.vary_shift_errors_plot_shor_syndrome(Perf
 # f_x_Shor, f_z_Shor = CircuitCompilation2xn.realistic_noise_logical_physical_error(Shor9())
 # f_x_Cleve, f_z_Cleve = CircuitCompilation2xn.realistic_noise_logical_physical_error(Cleve8())
 # f_x_P5, f_z_P5 = CircuitCompilation2xn.realistic_noise_logical_physical_error(Perfect5())
-f_x_P5, f_z_P5 = CircuitCompilation2xn.realistic_noise_vary_params(Perfect5())
+#f_x_P5, f_z_P5 = CircuitCompilation2xn.realistic_noise_vary_params(Perfect5())
 
 function pf_encoding_plot_krishna(Cx, Cz, code::AbstractECC, name=string(typeof(code)))
     checks = parity_checks(code)
@@ -242,8 +242,9 @@ end
 function pf_encoding_plot_krishna(Cx, Cz, checks, name="")
     scirc, _ = naive_syndrome_circuit(checks)
 
-    error_rates = exp10.(range(-5,-1,length=50))
-    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_FTecirc_pf_krishna(Cx, Cz, checks, scirc, p, 0) for p in error_rates]
+    error_rates = exp10.(range(-5,-1.5,length=40))
+    code = CircuitCompilation2xn.CSS(checks, Cx, Cz)
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_FTecirc_pf_krishna(code, scirc, p, 0) for p in error_rates]
 
     x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
     z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
@@ -258,8 +259,9 @@ end
 function pf_encoding_plot_shor_krishna(Cx, Cz, checks, name="")
     cat, scirc, anc_qubits, bit_indices = shor_syndrome_circuit(checks)
 
-    error_rates = exp10.(range(-5,-1,length=50))
-    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_FTencode_FTsynd_Krishna(Cx, Cz, checks, cat, scirc, p, 0) for p in error_rates]
+    error_rates = exp10.(range(-5,-1.5,length=40))
+    code = QuantumClifford.ECC.CSS(checks, Cx, Cz)
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_FTencode_FTsynd_Krishna(code, cat, scirc, p, 0) for p in error_rates]
 
     x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
     z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
@@ -271,28 +273,29 @@ function pf_encoding_plot_shor_krishna(Cx, Cz, checks, name="")
     return f_x, f_z
 end
 
-#Cx_Steane = stab_to_gf2(parity_checks(Steane7()))[1:3,1:7]
-#Cz_Steane = stab_to_gf2(parity_checks(Steane7()))[4:6,8:14]
-#f_x_Steane, f_z_Steane = pf_encoding_plot_krishna(Cx_Steane, Cz_Steane, Steane7())
+# Cx_Steane = stab_to_gf2(parity_checks(Steane7()))[1:3,1:7]
+# Cz_Steane = stab_to_gf2(parity_checks(Steane7()))[4:6,8:14]
+# f_x_Steane, f_z_Steane = pf_encoding_plot_krishna(Cx_Steane, Cz_Steane, Steane7())
 
-#ldpc_num = 1
-#stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(ldpc_num)
-#f_x , f_z = pf_encoding_plot_krishna(Cx, Cz, stab, "LDPC "*string(ldpc_num)) 
+# ldpc_num = 1
+# stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(ldpc_num)
+# f_x , f_z = pf_encoding_plot_krishna(Cx, Cz, stab, "LDPC "*string(ldpc_num)) 
 
-#Cx_Steane = stab_to_gf2(parity_checks(Steane7()))[1:3,1:7]
-#Cz_Steane = stab_to_gf2(parity_checks(Steane7()))[4:6,8:14]
-#f_x_Steane, f_z_Steane = pf_encoding_plot_shor_krishna(Cx_Steane, Cz_Steane, parity_checks(Steane7()))
+# Cx_Steane = stab_to_gf2(parity_checks(Steane7()))[1:3,1:7]
+# Cz_Steane = stab_to_gf2(parity_checks(Steane7()))[4:6,8:14]
+# f_x_Steane, f_z_Steane = pf_encoding_plot_shor_krishna(Cx_Steane, Cz_Steane, parity_checks(Steane7()))
 
 function test_LDPC_shor_circuit_reindexing(Cx, Cz, checks, name=string(typeof(code)))
     cat, scirc, anc_qubits, bit_indices = shor_syndrome_circuit(checks)
 
-    error_rates = exp10.(range(-5,-1,length=50))
+    error_rates = exp10.(range(-5,-1.5,length=40))
 
     # anc compile the circuit
     new_circuit, order = CircuitCompilation2xn.ancil_reindex_pipeline(scirc)
     new_cat = CircuitCompilation2xn.perfect_reindex(cat,order)
 
-    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_FTencode_FTsynd_Krishna(Cx, Cz, checks, new_cat, new_circuit, p, 0) for p in error_rates]
+    code = QuantumClifford.ECC.CSS(checks, Cx, Cz)
+    post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_FTencode_FTsynd_Krishna(code, new_cat, new_circuit, p, 0) for p in error_rates]
     x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
     z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
 
@@ -302,18 +305,19 @@ function test_LDPC_shor_circuit_reindexing(Cx, Cz, checks, name=string(typeof(co
     return new_f_x, new_f_z
 end
 
-#ldpc_num = 1
-#stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(ldpc_num)
-#f_x , f_z = test_LDPC_shor_circuit_reindexing(Cx, Cz, stab, "LDPC "*string(ldpc_num)) 
+# ldpc_num = 1
+# stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(ldpc_num)
+# f_x , f_z = test_LDPC_shor_circuit_reindexing(Cx, Cz, stab, "LDPC "*string(ldpc_num)) 
 
 #Cx_Steane = stab_to_gf2(parity_checks(Steane7()))[1:3,1:7]
 #Cz_Steane = stab_to_gf2(parity_checks(Steane7()))[4:6,8:14]
 #f_x, f_z = CircuitCompilation2xn.realistic_noise_logical_physical_error_ldpc(Cx_Steane, Cz_Steane, parity_checks(Steane7()), name="Steane LDPC")
 
-#ldpc_num = 1
-#stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(ldpc_num)
 # WARNING THIS REALLY DID NOT WORK
-#f_x , f_z = CircuitCompilation2xn.realistic_noise_logical_physical_error_ldpc(Cx, Cz, stab, name="LDPC "*string(ldpc_num)) 
+ldpc_num = 1
+stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(ldpc_num)
+code = QuantumClifford.ECC.CSS(stab, Cx, Cz)
+f_x , f_z = CircuitCompilation2xn.realistic_noise_logical_physical_error_ldpc(code, name="LDPC "*string(ldpc_num)) 
 
 function test_naive_refactor(code::AbstractECC, name=string(typeof(code)))
     checks = parity_checks(code)
@@ -321,7 +325,7 @@ function test_naive_refactor(code::AbstractECC, name=string(typeof(code)))
 end
 function test_naive_refactor(checks, name="")
     error_rates = 0.000:0.0025:0.08
-    post_ec_error_rates = [CircuitCompilation2xn.naive_error_correction_pipeline(checks, p) for p in error_rates]
+    post_ec_error_rates = [QuantumClifford.ECC.naive_error_correction_pipeline(checks, p) for p in error_rates]
     x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
     z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
 
@@ -337,7 +341,7 @@ function test_shor_refactor(code::AbstractECC, name=string(typeof(code)))
 end
 function test_shor_refactor(checks, name="")
     error_rates = 0.000:0.0025:0.08
-    post_ec_error_rates = [CircuitCompilation2xn.shor_error_correction_pipeline(checks, p) for p in error_rates]
+    post_ec_error_rates = [QuantumClifford.ECC.shor_error_correction_pipeline(checks, p) for p in error_rates]
     x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
     z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
 
@@ -351,7 +355,40 @@ end
 # f_x_Cleve, f_z_Cleve = test_naive_refactor(Cleve8())
 # f_x_P5, f_z_P5 = test_naive_refactor(Perfect5())
 
-# f_x_Steane, f_z_Steane = test_shor_refactor(Steane7())
+#f_x_Steane, f_z_Steane = test_shor_refactor(Steane7())
 # f_x_Shor, f_z_Shor = test_shor_refactor(Shor9())
 # f_x_Cleve, f_z_Cleve = test_shor_refactor(Cleve8())
 # f_x_P5, f_z_P5 = test_shor_refactor(Perfect5())
+
+function test_CSS_naive_refactor()
+    name = "LDPC1"
+    error_rates = exp10.(range(-5,-1.5,length=40))
+    stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(1)
+    code = QuantumClifford.ECC.CSS(stab, Cx, Cz)
+    post_ec_error_rates = [QuantumClifford.ECC.CSS_naive_error_correction_pipeline(code, p) for p in error_rates]
+
+    x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
+    z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
+
+    f_x = CircuitCompilation2xn.plot_code_performance_log_log(error_rates, x_error,title="Logical X Error of "*name*" Circuit Krishna")
+    f_z = CircuitCompilation2xn.plot_code_performance_log_log(error_rates, z_error,title="Logical Z Error of "*name*" Circuit Krishna")
+    return f_x, f_z
+end
+
+function test_CSS_shor_refactor()
+    name = "LDPC1"
+    error_rates = exp10.(range(-5,-1.5,length=40))
+    stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(1)
+    code = QuantumClifford.ECC.CSS(stab, Cx, Cz)
+    post_ec_error_rates = [QuantumClifford.ECC.CSS_shor_error_correction_pipeline(code, p, nframes=10_000) for p in error_rates]
+
+    x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]
+    z_error = [post_ec_error_rates[i][2] for i in eachindex(post_ec_error_rates)]
+
+    f_x = CircuitCompilation2xn.plot_code_performance_log_log(error_rates, x_error,title="Logical X Error of "*name*" Circuit Krishna")
+    f_z = CircuitCompilation2xn.plot_code_performance_log_log(error_rates, z_error,title="Logical Z Error of "*name*" Circuit Krishna")
+    return f_x, f_z
+end
+
+#f_x, f_z = test_CSS_naive_refactor()
+#f_x, f_z = test_CSS_shor_refactor()

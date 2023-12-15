@@ -1,24 +1,3 @@
-"""Generate a lookup table for decoding single qubit errors."""
-function create_lookup_table(code::Stabilizer)
-    lookup_table = Dict()
-    constraints, qubits = size(code)
-    # In the case of no errors
-    lookup_table[ zeros(UInt8, constraints) ] = zero(PauliOperator, qubits)
-    # In the case of single bit errors
-    for bit_to_be_flipped in 1:qubits
-        for error_type in [single_x, single_y, single_z]
-            # Generate e⃗
-            error = error_type(qubits, bit_to_be_flipped)
-            # Calculate s⃗
-            # (check which stabilizer rows do not commute with the Pauli error)
-            syndrome = comm(error, code)
-            # Store s⃗ → e⃗
-            lookup_table[syndrome] = error
-        end
-    end
-    lookup_table
-end
-
 """
 Wrapper for using QuantumClifford's naive_encoding_circuit function
 """
@@ -41,115 +20,7 @@ function evaluate_code_decoder_w_ecirc_pf(checks, ecirc, scirc, p_init, p_shift;
         append!(scirc, mz)
     end
 
-    return naive_error_correction_pipeline(checks, p_init, ecirc=ecirc, scirc=scirc, nframes=nframes, encoding_locs=encoding_locs)
-end
-""" Most simple simulation function
-* Uses a lookup table decoder over single qubit errors ['create_lookup_table'](@ref)
-* Uses ['naive_syndrome_circuit'](@ref)
-Returns a logical X and Z error for the provided p_error - physical error rate per qubit
-"""
-function naive_error_correction_pipeline(checks::Stabilizer, p_error; nframes=10_000, ecirc=nothing, encoding_locs=nothing, scirc=nothing)
-    if isnothing(scirc)
-        scirc , _= naive_syndrome_circuit(checks)
-    end
-    lookup_table = create_lookup_table(checks)
-    O = faults_matrix(checks)
-    circuit_Z = Base.copy(scirc)
-    circuit_X = Base.copy(scirc)
-
-    s, n = size(checks)
-    k = n-s
-
-    if isnothing(encoding_locs)
-        pre_X = [sHadamard(i) for i in n-k+1:n]
-    else
-        pre_X = [sHadamard(i) for i in encoding_locs]
-    end
-    
-    md = MixedDestabilizer(checks)
-    logview_Z = [ logicalzview(md);]
-    logcirc_Z, _ = naive_syndrome_circuit(logview_Z) # numLogBits shoudl equal k
-
-    logview_X = [ logicalxview(md);]
-    logcirc_X, _ = naive_syndrome_circuit(logview_X)
-
-    # Z logic circuit
-    for gate in logcirc_Z
-        type = typeof(gate)
-        if type == sMRZ
-            push!(circuit_Z, sMRZ(gate.qubit+s, gate.bit+s))
-        else
-            push!(circuit_Z, type(gate.q1, gate.q2+s))
-        end
-    end
-
-   # X logic circuit
-    for gate in logcirc_X
-        type = typeof(gate)
-        if type == sMRZ
-            push!(circuit_X, sMRZ(gate.qubit+s, gate.bit+s))
-        else
-            push!(circuit_X, type(gate.q1, gate.q2+s))
-        end
-    end
-
-    # Z simulation
-    errors = [PauliError(i,p_error) for i in 1:n]
-    if isnothing(ecirc)
-        ecirc_z = fault_tolerant_encoding(circuit_Z) # double syndrome encoding
-    else
-        ecirc_z = ecirc
-    end
-    fullcircuit_Z = vcat(ecirc_z, errors, circuit_Z)
-
-    frames = PauliFrame(nframes, n+s+k, s+k)
-    pftrajectories(frames, fullcircuit_Z)
-    syndromes = pfmeasurements(frames)[:, 1:s]
-    logicalSyndromes = pfmeasurements(frames)[:, s+1: s+k]
-
-    decoded = 0
-    for i in 1:nframes
-        row = syndromes[i,:]
-        guess = get(lookup_table,row,nothing)
-        if isnothing(guess)
-            continue
-        else
-            result_Z = (O * stab_to_gf2(guess))[k+1:2k]
-            if result_Z == logicalSyndromes[i,:]
-                decoded += 1
-            end
-        end
-    end
-    z_error = 1 - decoded / nframes
-
-    # X simulation
-    if isnothing(ecirc)
-        ecirc_x = fault_tolerant_encoding(circuit_X)  # double syndrome encoding
-    else
-        ecirc_x = ecirc
-    end
-    fullcircuit_X = vcat(pre_X, ecirc_x, errors, circuit_X)
-    frames = PauliFrame(nframes, n+s+k, s+k)
-    pftrajectories(frames, fullcircuit_X)
-    syndromes = pfmeasurements(frames)[:, 1:s]
-    logicalSyndromes = pfmeasurements(frames)[:, s+1: s+k]
-
-    decoded = 0
-    for i in 1:nframes
-        row = syndromes[i,:]
-        guess = get(lookup_table,row,nothing)
-        if isnothing(guess)
-            continue
-        else
-            result_X = (O * stab_to_gf2(guess))[1:k]
-            if result_X == logicalSyndromes[i, :]
-                decoded += 1
-            end
-        end
-    end
-    x_error = 1 - decoded / nframes
-
-    return x_error, z_error
+    return QuantumClifford.ECC.naive_error_correction_pipeline(checks, p_init, ecirc=ecirc, scirc=scirc, nframes=nframes, encoding_locs=encoding_locs)
 end
 
 """Evaluates lookup table decoder for shor style syndrome circuit. Wrapper for ['shor_error_correction_pipeline'](@ref)
@@ -189,126 +60,7 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, sci
         end
         append!(scirc, mz)
     end
-    return shor_error_correction_pipeline(checks, p_init, cat=cat, scirc=scirc, nframes=nframes, ecirc=ecirc, encoding_locs=encoding_locs)
-end
-
-""" Similiar to ['naive_error_correction_pipeline'](@ref) but now uses shor style fault tolerant syndrome measurement
-* Uses a lookup table decoder over single qubit errors ['create_lookup_table'](@ref)
-* Uses ['shor_syndrome_circuit'](@ref)
-Returns a logical X and Z error for the provided p_error - physical error rate per qubit
-"""
-function shor_error_correction_pipeline(checks::Stabilizer, p_init; nframes=10_000, cat=nothing, scirc=nothing, ecirc=nothing, encoding_locs=nothing)
-    if isnothing(scirc) || isnothing(cat)
-        cat, scirc, _ = shor_syndrome_circuit(checks)
-    end
-
-    lookup_table = create_lookup_table(checks)
-    O = faults_matrix(checks)
-    circuit_Z = Base.copy(scirc)
-    circuit_X = Base.copy(scirc)
-
-    s, n = size(checks)
-    k = n-s
-
-    if isnothing(encoding_locs)
-        pre_X = [sHadamard(i) for i in n-k+1:n]
-    else
-        pre_X = [sHadamard(i) for i in encoding_locs]
-    end
-
-    anc_qubits = 0
-    for pauli in checks
-        anc_qubits += mapreduce(count_ones,+, xview(pauli) .| zview(pauli))
-    end
-    regbits = anc_qubits + s
-
-    md = MixedDestabilizer(checks)
-    logview_Z = logicalzview(md)
-    logcirc_Z, _ = naive_syndrome_circuit(logview_Z)
-
-    logview_X = logicalxview(md)
-    logcirc_X, _ = naive_syndrome_circuit(logview_X)
-
-    # Z logic circuit
-    for gate in logcirc_Z
-        type = typeof(gate)
-        if type == sMRZ
-            push!(circuit_Z, sMRZ(gate.qubit+anc_qubits, gate.bit+regbits))
-        else
-            push!(circuit_Z, type(gate.q1, gate.q2+anc_qubits))
-        end
-    end
-
-   # X logic circuit
-    for gate in logcirc_X
-        type = typeof(gate)
-        if type == sMRZ
-            push!(circuit_X, sMRZ(gate.qubit+anc_qubits, gate.bit+regbits))
-        else
-            push!(circuit_X, type(gate.q1, gate.q2+anc_qubits))
-        end
-    end
-
-    # Z simulation
-    errors = [PauliError(i,p_init) for i in 1:n]
-    if isnothing(ecirc)
-        ecirc_z = fault_tolerant_encoding(vcat(cat,circuit_Z)) # double syndrome encoding
-        fullcircuit_Z = vcat(ecirc_z, errors, circuit_Z)
-    else
-        ecirc_z = ecirc
-        fullcircuit_Z = vcat(ecirc_z, errors, cat, circuit_Z)
-    end
-    
-    frames = PauliFrame(nframes, n+anc_qubits+k, regbits+k)
-    pftrajectories(frames, fullcircuit_Z)
-    syndromes = pfmeasurements(frames)[:, anc_qubits+1:regbits]
-    logicalSyndromes = pfmeasurements(frames)[:, regbits+1:regbits+k]
-
-    decoded = 0
-    for i in 1:nframes
-        row = syndromes[i,:]
-        guess = get(lookup_table,row,nothing)
-        if isnothing(guess)
-            continue
-        else
-            result_Z = (O * stab_to_gf2(guess))[k+1:2k]
-            if result_Z == logicalSyndromes[i,:]
-                decoded += 1
-            end
-        end
-    end
-    z_error = 1 - decoded / nframes
-
-    # X simulation
-    if isnothing(ecirc)
-        ecirc_x = fault_tolerant_encoding(vcat(cat,circuit_X)) # double syndrome encoding
-        fullcircuit_X = vcat(pre_X, ecirc_x, errors, circuit_X)
-    else
-        ecirc_x = ecirc
-        fullcircuit_X = vcat(pre_X, ecirc_x, errors, cat, circuit_X)
-    end
-    
-    frames = PauliFrame(nframes, n+anc_qubits+k, regbits+k)
-    pftrajectories(frames, fullcircuit_X)
-    syndromes = pfmeasurements(frames)[:, anc_qubits+1:regbits]
-    logicalSyndromes = pfmeasurements(frames)[:, regbits+1:regbits+k]
-
-    decoded = 0
-    for i in 1:nframes
-        row = syndromes[i,:]
-        guess = get(lookup_table,row,nothing)
-        if isnothing(guess)
-            continue
-        else
-            result_X = (O * stab_to_gf2(guess))[1:k]
-            if result_X == logicalSyndromes[i, :]
-                decoded += 1
-            end
-        end
-    end
-    x_error = 1 - decoded / nframes
-
-    return x_error, z_error
+    return QuantumClifford.ECC.shor_error_correction_pipeline(checks, p_init, cat=cat, scirc=scirc, nframes=nframes, ecirc=ecirc, encoding_locs=encoding_locs)
 end
 
 # This might be mathematically wrong. In practicy I've treated p_error = 1 - gate_fidelity
@@ -653,210 +405,48 @@ function realistic_noise_vary_params(code::AbstractECC, p_shift=0.01, p_wait=1-e
     return f_x, f_z
 end
 
-"""Only wroks with fault tolerant encoding, but naive syndrome measurement on an ECC with a Cx and Cz matrix
-- The X checks must come before the Z checks in the Stabilizer tableaux
+
+"""Wrapper for QuantumClifford.ECC.CSS_naive_error_correction_pipeline()
 """
-function evaluate_code_decoder_FTecirc_pf_krishna(Cx, Cz, checks, scirc, p_init, p_shift=0 ; nframes=1_000, encoding_locs=nothing, max_iters = 25)
-    O = faults_matrix(checks)
-    circuit_Z = Base.copy(scirc)
-    circuit_X = Base.copy(scirc)
-
-    @assert size(Cx, 2) == size(Cz, 2) == nqubits(checks)
-    @assert size(Cx, 1) + size(Cz, 1) == length(checks)
-
-    s, n = size(checks)
-    _, _, r = canonicalize!(Base.copy(checks), ranks=true)
+function evaluate_code_decoder_FTecirc_pf_krishna(code::CSS, scirc, p_init, p_shift=0 ; nframes=1_000, max_iters = 25)
+    s, n = size(code.tableau)
+    _, _, r = canonicalize!(Base.copy(code.tableau), ranks=true)
     k = n - r
-
-    # Krishna decoder
-    log_probabs = zeros(n)
-    channel_probs = fill(p_init, n)
-
-    numchecks_X = size(Cx)[1]
-    b2c_X = zeros(numchecks_X, n)
-    c2b_X = zeros(numchecks_X, n)
-
-    numchecks_Z = size(Cz)[1]
-    b2c_Z = zeros(numchecks_Z, n)
-    c2b_Z = zeros(numchecks_Z, n)
-    err = zeros(n)
-
-    if isnothing(encoding_locs)
-        pre_X = [sHadamard(i) for i in n-k+1:n]
-    else
-        pre_X = [sHadamard(i) for i in encoding_locs]
-    end
 
     if p_shift != 0
         non_mz, mz = clifford_grouper(scirc)
         non_mz = calculate_shifts(non_mz)
-        circuit_X = []
-        circuit_Z = []
+        scirc = []
 
         first_shift = true
         for subcircuit in non_mz
             # Shift!
             if !first_shift
-                append!(circuit_X, [PauliError(i,p_shift) for i in n+1:n+s])
-                append!(circuit_Z, [PauliError(i,p_shift) for i in n+1:n+s])
+                append!(scirc, [PauliError(i,p_shift) for i in n+1:n+s])
             end
             append!(circuit_Z, subcircuit)
-            append!(circuit_X, subcircuit)
             first_shift = false
         end
-        append!(circuit_X, mz)
-        append!(circuit_Z, mz)
+        append!(scirc, mz)
     end
 
-    md = MixedDestabilizer(checks)
-    logview_Z = logicalzview(md)
-    logcirc_Z, numLogBits_Z, _ = naive_syndrome_circuit(logview_Z)
-    @assert numLogBits_Z == k
-
-    logview_X = logicalxview(md)
-    logcirc_X, numLogBits_X, _ = naive_syndrome_circuit(logview_X)
-    @assert numLogBits_X == k
-
-    # Z logic circuit
-    for gate in logcirc_Z
-        type = typeof(gate)
-        if type == sMRZ
-            push!(circuit_Z, sMRZ(gate.qubit+s, gate.bit+s))
-        else
-            push!(circuit_Z, type(gate.q1, gate.q2+s))
-        end
-    end
-
-   # X logic circuit
-    for gate in logcirc_X
-        type = typeof(gate)
-        if type == sMRZ
-            push!(circuit_X, sMRZ(gate.qubit+s, gate.bit+s))
-        else
-            push!(circuit_X, type(gate.q1, gate.q2+s))
-        end
-    end
-
-    errors = [PauliError(i,p_init) for i in 1:n]
-
-    # Z simulation
-    ecirc = fault_tolerant_encoding(circuit_Z)
-    fullcircuit_Z = vcat(ecirc, errors, circuit_Z)
-
-    frames = PauliFrame(nframes, n+s+k, s+k)
-    pftrajectories(frames, fullcircuit_Z)
-    syndromes = pfmeasurements(frames)[:, 1:s]
-    logicalSyndromes = pfmeasurements(frames)[:, s+1: s+k]
-
-    decoded = 0
-    for i in 1:nframes
-        row = syndromes[i,:]
-        row_x = row[1:numchecks_X]
-        row_z = row[numchecks_X+1:numchecks_X+numchecks_Z]
-
-        KguessX, success = syndrome_decode(sparse(Cx), sparse(Cx'), row_x, max_iters, channel_probs, b2c_X, c2b_X, log_probabs, Base.copy(err))
-        KguessZ, success = syndrome_decode(sparse(Cz), sparse(Cz'), row_z, max_iters, channel_probs, b2c_Z, c2b_Z, log_probabs, Base.copy(err))
-        guess = vcat(KguessZ, KguessX)
-        
-        result_Z = (O * (guess))[k+1:2k]
-        if result_Z == logicalSyndromes[i,:]
-            decoded += 1
-        end
-    end
-    z_error = 1 - decoded / nframes
-
-    # X simulation
-    ecirc = fault_tolerant_encoding(circuit_X)
-    fullcircuit_X = vcat(pre_X, ecirc, errors, circuit_X)
-
-    frames = PauliFrame(nframes, n+s+k, s+k)
-    pftrajectories(frames, fullcircuit_X)
-    syndromes = pfmeasurements(frames)[:, 1:s]
-    logicalSyndromes = pfmeasurements(frames)[:, s+1: s+k]
-
-    decoded = 0
-    for i in 1:nframes
-        row = syndromes[i,:]
-        row_x = row[1:numchecks_X]
-        row_z = row[numchecks_X+1:numchecks_X+numchecks_Z]
-
-        KguessX, success = syndrome_decode(sparse(Cx), sparse(Cx'), row_x, max_iters, channel_probs, b2c_X, c2b_X, log_probabs, Base.copy(err))
-        KguessZ, success = syndrome_decode(sparse(Cz), sparse(Cz'), row_z, max_iters, channel_probs, b2c_Z, c2b_Z, log_probabs, Base.copy(err))
-        guess = vcat(KguessZ, KguessX)
-        
-        result_X = (O * (guess))[1:k]
-        if result_X == logicalSyndromes[i, :]
-            decoded += 1
-        end
-    end
-    x_error = 1 - decoded / nframes
-
-    return x_error, z_error
+    return QuantumClifford.ECC.CSS_naive_error_correction_pipeline(code, p_init, nframes=nframes, scirc=scirc, max_iters=max_iters) 
 end
 
-"""Given a syndrome circuit, returns the fault tolerant encoding circuit. Basically just a copy of the syndrome circuit that throws away the measurement results."""
-function fault_tolerant_encoding(scirc)
-    ecirc = Vector{QuantumClifford.AbstractOperation}()
-    for gate in scirc
-        if isa(gate,sMRZ)
-            push!(ecirc, sMZ(gate.qubit))
-        elseif isa(gate,sMRX)
-            push!(ecirc, sMX(gate.qubit))
-        elseif isa(gate,sMRY)
-            push!(ecirc, sMY(gate.qubit))
-        else
-            push!(ecirc, gate)
-        end
-    end
-    return ecirc
-end
-
-"""Uses fault tolerant encoding and syndrome measurement on an ECC with a Cx and Cz matrix
-- The X checks must come before the Z checks in the Stabilizer tableaux
+"""Wrapper for CSS_shor_error_correction_pipeline()
 """
-function evaluate_code_FTencode_FTsynd_Krishna(Cx, Cz, checks::Stabilizer, cat, scirc, p_init, p_shift=0, p_wait=0; nframes=10_000, encoding_locs=nothing, max_iters = 25)
-    O = faults_matrix(checks)
-    circuit_Z = Base.copy(scirc)
-    circuit_X = Base.copy(scirc)
-
-    @assert size(Cx, 2) == size(Cz, 2) == nqubits(checks)
-    @assert size(Cx, 1) + size(Cz, 1) == length(checks)
-
-    s, n = size(checks)
-    _, _, r = canonicalize!(Base.copy(checks), ranks=true)
-    k = n - r
-
-    # Krishna decoder
-    log_probabs = zeros(n)
-    channel_probs = fill(p_init, n)
-
-    numchecks_X = size(Cx)[1]
-    b2c_X = zeros(numchecks_X, n)
-    c2b_X = zeros(numchecks_X, n)
-
-    numchecks_Z = size(Cz)[1]
-    b2c_Z = zeros(numchecks_Z, n)
-    c2b_Z = zeros(numchecks_Z, n)
-    err = zeros(n)
-
-    if isnothing(encoding_locs)
-        pre_X = [sHadamard(i) for i in n-k+1:n]
-    else
-        pre_X = [sHadamard(i) for i in encoding_locs]
-    end
+function evaluate_code_FTencode_FTsynd_Krishna(code::CSS, cat, scirc, p_init, p_shift=0, p_wait=0; nframes=10_000, max_iters = 25)
+    s, n = size(code.tableau)
 
     anc_qubits = 0
-    for pauli in checks
+    for pauli in code.tableau
         anc_qubits += mapreduce(count_ones,+, xview(pauli) .| zview(pauli))
     end
-
-    regbits = anc_qubits + s
 
     if p_shift != 0
         non_mz, mz = clifford_grouper(scirc)
         non_mz = calculate_shifts(non_mz)
-        circuit_X = []
-        circuit_Z = []
+        scirc = []
 
         first_shift = true
         for subcircuit in non_mz
@@ -864,123 +454,40 @@ function evaluate_code_FTencode_FTsynd_Krishna(Cx, Cz, checks::Stabilizer, cat, 
             if !first_shift
                 # Errors due to shifting the data/ancilla row - whichever is smallest
                 # TODO right now hardcoded to shift the data qubits.
-                #append!(circuit_X, [PauliError(i,p_shift) for i in n+1:n+anc_qubits])
-                #append!(circuit_Z, [PauliError(i,p_shift) for i in n+1:n+anc_qubits])
-                append!(circuit_X, [PauliError(i,p_shift) for i in 1:n])
-                append!(circuit_Z, [PauliError(i,p_shift) for i in 1:n])
+                #append!(scirc, [PauliError(i,p_shift) for i in n+1:n+anc_qubits])
+                append!(scirc, [PauliError(i,p_shift) for i in 1:n])
             end
-            append!(circuit_Z, subcircuit)
-            append!(circuit_X, subcircuit)
+            append!(scirc, subcircuit)
             first_shift = false
 
             # Errors due to waiting for the next shuttle -> should this be on all qubits? Maybe the p_shift includes this for ancilla already?
             # TODO Should this be random Pauli error or just Z error?
-            #append!(circuit_X, [PauliError(i,p_wait) for i in 1:n])
-            #append!(circuit_Z, [PauliError(i,p_wait) for i in 1:n])
-            append!(circuit_X, [PauliError(i,p_wait) for i in n+1:n+anc_qubits])
-            append!(circuit_Z, [PauliError(i,p_wait) for i in n+1:n+anc_qubits])
+            #append!(scirc, [PauliError(i,p_wait) for i in 1:n])
+            append!(scirc, [PauliError(i,p_wait) for i in n+1:n+anc_qubits])
         end
-        append!(circuit_X, mz)
-        append!(circuit_Z, mz)
+        append!(scirc, mz)
     end
-
-    md = MixedDestabilizer(checks)
-    logview_Z = logicalzview(md)
-    logcirc_Z, _ = naive_syndrome_circuit(logview_Z)
-
-    logview_X = logicalxview(md)
-    logcirc_X, _ = naive_syndrome_circuit(logview_X)
-
-    # Z logic circuit
-    for gate in logcirc_Z
-        type = typeof(gate)
-        if type == sMRZ
-            push!(circuit_Z, sMRZ(gate.qubit+anc_qubits, gate.bit+regbits))
-        else
-            push!(circuit_Z, type(gate.q1, gate.q2+anc_qubits))
-        end
-    end
-
-   # X logic circuit
-    for gate in logcirc_X
-        type = typeof(gate)
-        if type == sMRZ
-            push!(circuit_X, sMRZ(gate.qubit+anc_qubits, gate.bit+regbits))
-        else
-            push!(circuit_X, type(gate.q1, gate.q2+anc_qubits))
-        end
-    end
-
-    errors = [PauliError(i,p_init) for i in 1:n]
-
-    # Z simulation
-    ecirc = fault_tolerant_encoding(vcat(cat, circuit_Z))# notice that the ecirc now contains the cat state
-    fullcircuit_Z = vcat(ecirc, errors, circuit_Z)
-
-    frames = PauliFrame(nframes, n+anc_qubits+k, regbits+k)
-    pftrajectories(frames, fullcircuit_Z)
-    syndromes = pfmeasurements(frames)[:, anc_qubits+1:regbits]
-    logicalSyndromes = pfmeasurements(frames)[:, regbits+1:regbits+k]
-
-    decoded = 0
-    for i in 1:nframes
-        row = syndromes[i,:]
-        row_x = row[1:numchecks_X]
-        row_z = row[numchecks_X+1:numchecks_X+numchecks_Z]
-
-        KguessX, success = syndrome_decode(sparse(Cx), sparse(Cx'), row_x, max_iters, channel_probs, b2c_X, c2b_X, log_probabs, Base.copy(err))
-        KguessZ, success = syndrome_decode(sparse(Cz), sparse(Cz'), row_z, max_iters, channel_probs, b2c_Z, c2b_Z, log_probabs, Base.copy(err))
-        guess = vcat(KguessZ, KguessX)
-        
-        result_Z = (O * (guess))[k+1:2k]
-        if result_Z == logicalSyndromes[i,:]
-            decoded += 1
-        end
-    end
-    z_error = 1 - decoded / nframes
-
-    # X simulation
-    ecirc = fault_tolerant_encoding(vcat(cat, circuit_X))
-    fullcircuit_X = vcat(pre_X, ecirc, errors, circuit_X) # notice that the ecirc now contains the cat state
-
-    frames = PauliFrame(nframes, n+anc_qubits+k, regbits+k)
-    pftrajectories(frames, fullcircuit_X)
-    syndromes = pfmeasurements(frames)[:, anc_qubits+1:regbits]
-    logicalSyndromes = pfmeasurements(frames)[:, regbits+1:regbits+k]
-
-    decoded = 0
-    for i in 1:nframes
-        row = syndromes[i,:]
-        row_x = row[1:numchecks_X]
-        row_z = row[numchecks_X+1:numchecks_X+numchecks_Z]
-
-        KguessX, success = syndrome_decode(sparse(Cx), sparse(Cx'), row_x, max_iters, channel_probs, b2c_X, c2b_X, log_probabs, Base.copy(err))
-        KguessZ, success = syndrome_decode(sparse(Cz), sparse(Cz'), row_z, max_iters, channel_probs, b2c_Z, c2b_Z, log_probabs, Base.copy(err))
-        guess = vcat(KguessZ, KguessX)
-        
-        result_X = (O * (guess))[1:k]
-        if result_X == logicalSyndromes[i, :]
-            decoded += 1
-        end
-    end
-    x_error = 1 - decoded / nframes
-
-    return x_error, z_error
+    return QuantumClifford.ECC.CSS_shor_error_correction_pipeline(code, p_init, cat=cat, scirc=scirc, nframes=nframes, max_iters=max_iters)
 end
 
 # This had terrible results
 """Effects of compilation against varying memory error after encoding + other realistic sources of error""" 
-function realistic_noise_logical_physical_error_ldpc(Cx, Cz, checks::Stabilizer, p_shift=0.01, p_wait=1-exp(-14.5/28_000), p_gate=1-0.995; name="")
+function realistic_noise_logical_physical_error_ldpc(code::CSS, p_shift=0.01, p_wait=1-exp(-14.5/28_000), p_gate=1-0.995; name="")
     title = name*" Circuit - Shor Syndrome Circuit"
+
+    checks = code.tableau
     cat, scirc, _ = shor_syndrome_circuit(checks)
 
-    nframes = 10_000
+    nframes = 1000
     m = 1/3
+    p_wait = 0 # this term is fine
+    p_gate = 0 # gate error alone causes terrible performance
+    p_shift = p_shift/100
 
-    error_rates = exp10.(range(-5,-1,length=50))
+    error_rates = exp10.(range(-5,-1.5,length=40))
     # Uncompiled errors
-    post_ec_error_rates_s0 = [evaluate_code_FTencode_FTsynd_Krishna(Cx, Cz, checks, cat, add_two_qubit_gate_noise(scirc, p_gate), p, p_shift, p_wait, nframes=nframes) for p in error_rates]
-    post_ec_error_rates_s1 = [evaluate_code_FTencode_FTsynd_Krishna(Cx, Cz, checks, cat, add_two_qubit_gate_noise(scirc, p_gate*m), p, p_shift*m, 1-exp(-14.5*m/28_000), nframes=nframes) for p in error_rates]
+    post_ec_error_rates_s0 = [evaluate_code_FTencode_FTsynd_Krishna(code, cat, add_two_qubit_gate_noise(scirc, p_gate), p, p_shift, p_wait, nframes=nframes) for p in error_rates]
+    post_ec_error_rates_s1 = [evaluate_code_FTencode_FTsynd_Krishna(code, cat, add_two_qubit_gate_noise(scirc, p_gate*m), p, p_shift*m, 1-exp(-14.5*m/28_000), nframes=nframes) for p in error_rates]
     x_error_s0 = [post_ec_error_rates_s0[i][1] for i in eachindex(post_ec_error_rates_s0)]
     z_error_s0 = [post_ec_error_rates_s0[i][2] for i in eachindex(post_ec_error_rates_s0)]
     x_error_s1 = [post_ec_error_rates_s1[i][1] for i in eachindex(post_ec_error_rates_s1)]
@@ -989,8 +496,8 @@ function realistic_noise_logical_physical_error_ldpc(Cx, Cz, checks::Stabilizer,
     # Anc Compiled circuit
     new_circuit, order = ancil_reindex_pipeline(scirc)
     new_cat = perfect_reindex(cat, order)
-    compiled_post_ec_error_rates_s0 = [evaluate_code_FTencode_FTsynd_Krishna(Cx, Cz, checks, new_cat, add_two_qubit_gate_noise(new_circuit, p_gate), p, p_shift, p_wait, nframes=nframes) for p in error_rates]
-    compiled_post_ec_error_rates_s1 = [evaluate_code_FTencode_FTsynd_Krishna(Cx, Cz, checks, new_cat, add_two_qubit_gate_noise(new_circuit, p_gate*m), p, p_shift*m, 1-exp(-14.5*m/28_000), nframes=nframes) for p in error_rates]
+    compiled_post_ec_error_rates_s0 = [evaluate_code_FTencode_FTsynd_Krishna(code, new_cat, add_two_qubit_gate_noise(new_circuit, p_gate), p, p_shift, p_wait, nframes=nframes) for p in error_rates]
+    compiled_post_ec_error_rates_s1 = [evaluate_code_FTencode_FTsynd_Krishna(code, new_cat, add_two_qubit_gate_noise(new_circuit, p_gate*m), p, p_shift*m, 1-exp(-14.5*m/28_000), nframes=nframes) for p in error_rates]
     compiled_x_error_s0 = [compiled_post_ec_error_rates_s0[i][1] for i in eachindex(compiled_post_ec_error_rates_s0)]
     compiled_z_error_s0 = [compiled_post_ec_error_rates_s0[i][2] for i in eachindex(compiled_post_ec_error_rates_s0)]
     compiled_x_error_s1 = [compiled_post_ec_error_rates_s1[i][1] for i in eachindex(compiled_post_ec_error_rates_s1)]
