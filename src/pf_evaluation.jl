@@ -36,7 +36,7 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, sci
         anc_qubits += mapreduce(count_ones,+, xview(pauli) .| zview(pauli))
     end
 
-    if p_shift != 0
+    if p_shift != 0 # TODO p_shift = 0.0001 * distance
         non_mz, mz = clifford_grouper(scirc)
         non_mz = calculate_shifts(non_mz)
         scirc = []
@@ -44,19 +44,19 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, sci
         first_shift = true
         for subcircuit in non_mz
             # Shift!
-            if !first_shift
+            if !first_shift # TODO first shift should be free
                 # Errors due to shifting the data/ancilla row - whichever is smallest
                 # TODO right now hardcoded to shift the data qubits.
-                #append!(scirc, [PauliError(i,p_shift) for i in n+1:n+anc_qubits])
-                append!(scirc, [PauliError(i,p_shift) for i in 1:n])
+                append!(scirc, [PauliError(i,p_shift) for i in n+1:n+anc_qubits])
+                #append!(scirc, [PauliError(i,p_shift) for i in 1:n])
             end
             append!(scirc, subcircuit)
             first_shift = false
 
             # Errors due to waiting for the next shuttle -> should this be on all qubits? Maybe the p_shift includes this for ancilla already?
             # TODO Should this be random Pauli error or just Z error?
-            #append!(scirc, [PauliError(i,p_wait) for i in 1:n])
-            append!(scirc, [PauliError(i,p_wait) for i in n+1:n+anc_qubits])
+            append!(scirc, [PauliError(i,p_wait) for i in 1:n]) #TODO shoudl be random Z 
+            #append!(scirc, [PauliError(i,p_wait) for i in n+1:n+anc_qubits])
         end
         append!(scirc, mz)
     end

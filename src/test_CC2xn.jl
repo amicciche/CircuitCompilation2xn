@@ -291,7 +291,7 @@ function test_LDPC_shor_circuit_reindexing(Cx, Cz, checks, name=string(typeof(co
     error_rates = exp10.(range(-5,-1.5,length=40))
 
     # anc compile the circuit
-    new_circuit, order = CircuitCompilation2xn.ancil_reindex_pipeline(scirc)
+    new_circuit, order = CircuitCompilation2xn.ancil_reindex_pipeline_shor_syndrome(scirc)
     new_cat = CircuitCompilation2xn.perfect_reindex(cat,order)
 
     code = QuantumClifford.ECC.CSS(checks, Cx, Cz)
@@ -305,19 +305,19 @@ function test_LDPC_shor_circuit_reindexing(Cx, Cz, checks, name=string(typeof(co
     return new_f_x, new_f_z
 end
 
-# ldpc_num = 1
-# stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(ldpc_num)
-# f_x , f_z = test_LDPC_shor_circuit_reindexing(Cx, Cz, stab, "LDPC "*string(ldpc_num)) 
+ ldpc_num = 1
+ stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(ldpc_num)
+ f_x , f_z = test_LDPC_shor_circuit_reindexing(Cx, Cz, stab, "LDPC "*string(ldpc_num)) 
 
 #Cx_Steane = stab_to_gf2(parity_checks(Steane7()))[1:3,1:7]
 #Cz_Steane = stab_to_gf2(parity_checks(Steane7()))[4:6,8:14]
 #f_x, f_z = CircuitCompilation2xn.realistic_noise_logical_physical_error_ldpc(Cx_Steane, Cz_Steane, parity_checks(Steane7()), name="Steane LDPC")
 
 # WARNING THIS REALLY DID NOT WORK
-ldpc_num = 1
-stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(ldpc_num)
-code = QuantumClifford.ECC.CSS(stab, Cx, Cz)
-f_x , f_z = CircuitCompilation2xn.realistic_noise_logical_physical_error_ldpc(code, name="LDPC "*string(ldpc_num)) 
+# ldpc_num = 1
+# stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(ldpc_num)
+# code = QuantumClifford.ECC.CSS(stab, Cx, Cz)
+# f_x , f_z = CircuitCompilation2xn.realistic_noise_logical_physical_error_ldpc(code, name="LDPC "*string(ldpc_num)) 
 
 function test_naive_refactor(code::AbstractECC, name=string(typeof(code)))
     checks = parity_checks(code)
@@ -392,3 +392,11 @@ end
 
 #f_x, f_z = test_CSS_naive_refactor()
 #f_x, f_z = test_CSS_shor_refactor()
+
+# complicated_example = [CircuitCompilation2xn.qblock([6],0,0,0) for _ in 1:4]
+# complicated_example = vcat(complicated_example, [CircuitCompilation2xn.qblock([5],0,0,0) for _ in 1:5])
+# complicated_example = vcat(complicated_example, [CircuitCompilation2xn.qblock([4],0,0,0) for _ in 1:1])
+# complicated_example = vcat(complicated_example, [CircuitCompilation2xn.qblock([3],0,0,0) for _ in 1:2])
+# complicated_example = vcat(complicated_example, [CircuitCompilation2xn.qblock([2],0,0,0) for _ in 1:5])
+# complicated_example = vcat(complicated_example, [CircuitCompilation2xn.qblock([1],0,0,0) for _ in 1:5])
+# complicated_example = vcat(complicated_example, [CircuitCompilation2xn.qblock([0],0,0,0) for _ in 1:2])

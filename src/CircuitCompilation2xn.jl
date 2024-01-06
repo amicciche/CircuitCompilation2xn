@@ -63,6 +63,7 @@ function staircase(blockset)
     end
 end
 
+# This function is pretty much obsolete 
 function identity_sort(blockset)
     sorted = []
     indices = []
@@ -92,6 +93,171 @@ function identity_sort(blockset)
         currentAncil += 1
     end
     return order
+end
+
+function shor_syndrome_sort(blockset)
+    order = Dict()
+    sort!(blockset, by = x -> (x.ancil), rev=false)
+    currentAncil = blockset[1].ancil
+
+    staircase_size = length(blockset)
+    sort!(blockset, by = x -> (x.elements[1]), rev=true)
+    hard_chains = Vector{Vector{qblock}}()
+    
+    # 1.) Form hard chains
+    for block in blockset
+        if length(hard_chains)==0
+            push!(hard_chains, [block])
+            continue
+        end
+        placed = false
+        for i in 1:(length(hard_chains))
+            if block.elements[1]+1 == last(hard_chains[i]).elements[1]
+                push!(hard_chains[i], block)
+                placed = true
+                break
+            end
+        end
+
+        if !placed
+            push!(hard_chains, [block])
+        end
+    end
+
+    #return hard_chains
+    # 2.) Form soft-links
+    sort!(hard_chains, by = x -> (length(x)), rev=true) # bring longest chains to the front
+
+    soft_chains = Vector{Vector{qblock}}()
+    for chain in hard_chains
+        max_elem = chain[1].elements[1]
+        min_elem = last(chain).elements[1]
+
+        found_a_home = false
+        for other_chain in soft_chains
+            if (max_elem < last(other_chain).elements[1]) && !found_a_home
+                gap_size = last(other_chain).elements[1] - max_elem
+                append!(other_chain, [qblock([-1], 0, 0, 0) for i in 1:gap_size-1])
+                append!(other_chain, chain)
+                found_a_home = true
+                break
+            elseif (min_elem > other_chain[1].elements[1]) && !found_a_home
+                gap_size = min_elem - other_chain[1].elements[1]
+                prepend!(other_chain, [qblock([-1], 0, 0, 0) for i in 1:gap_size-1])
+                prepend!(other_chain, chain)
+                found_a_home = true
+            end
+        end
+        if !found_a_home
+            push!(soft_chains, chain)
+        end
+    end
+    #return soft_chains
+
+    # 3. Place as many soft link chains as possible
+    
+    sorted_blockset = [CircuitCompilation2xn.qblock([-1],0,0,0) for _ in 1:staircase_size]
+    leftovers = Vector{Vector{qblock}}()
+   
+    for chain in soft_chains
+        
+        assignment_index = 0
+        for cursor_position in 1:(staircase_size - length(chain) +1)
+            found_position = true
+            for chain_position in eachindex(chain)
+                if sorted_blockset[cursor_position+(chain_position-1)].elements[1] != -1 && chain[chain_position].elements[1] != -1
+                    found_position = false
+                end
+            end
+            if found_position
+                assignment_index = cursor_position
+                #println("found position!")
+                break
+            end
+        end
+        if assignment_index == 0
+            push!(leftovers, chain)
+        else
+            i = 0
+            for block in chain
+                if block.elements[1] != -1
+                    sorted_blockset[assignment_index+i] = block
+                end
+                i += 1
+            end
+        end
+    end 
+
+    #return sorted_blockset, leftovers
+
+    #4. Break up leftovers and repeat 3.)
+    leftover_chains = Vector{Vector{qblock}}()
+    new_chain = true
+    for leftover in leftovers
+        for block in leftover
+            if block.elements[1] == -1
+                new_chain = true
+                continue
+            else
+                if new_chain
+                    push!(leftover_chains, [block])
+                    new_chain = false
+                else
+                    push!(last(leftover_chains), block)
+                end
+            end
+        end
+    end
+
+    # for some reason sorting this makes it worse
+    # sort!(leftover_chains, by = x -> (length(x)), rev=false)
+    # TODO This stage definatly has some room to grow
+    # TODO look here to improve compilation performance.
+    #return leftover_chains
+
+    leftovers = Vector{Vector{qblock}}()
+    for chain in leftover_chains
+        
+        assignment_index = 0
+        for cursor_position in 1:(staircase_size - length(chain) +1)
+            found_position = true
+            for chain_position in eachindex(chain)
+                if sorted_blockset[cursor_position+(chain_position-1)].elements[1] != -1 && chain[chain_position].elements[1] != -1
+                    found_position = false
+                end
+            end
+            if found_position
+                assignment_index = cursor_position
+                #println("found position!")
+                break
+            end
+        end
+        if assignment_index == 0
+            push!(leftovers, chain)
+        else
+            i = 0
+            for block in chain
+                if block.elements[1] != -1
+                    sorted_blockset[assignment_index+i] = block
+                end
+                i += 1
+            end
+        end
+    end 
+    #return sorted_blockset, leftovers
+
+    # TODO Step 5, make the above steps 3 and 4 into a while loop to guarantee convergence - make sure leftovers is empty
+    if length(leftovers) != 0
+        println("ERROR Needed step 5")
+        return (sorted_blockset, leftovers)
+    else
+        for block in sorted_blockset
+            order[block.ancil] = currentAncil
+            currentAncil += 1
+        end
+        return order
+    end
+
 end
 
 """Splits the provided circuit into two pieces. The first piece is the one on which we reindex. The second piece contains operations that would
@@ -198,6 +364,18 @@ function ancil_reindex_pipeline(circuit, inverted=false)
     if inverted
         new_mz = measurement_circuit
     end
+    return vcat(gate_Shuffle!(new_circuit), new_mz), order
+end
+
+"""Special case of the reindexing pipeline that exploits the structure of Shor syndrome circuits"""
+function ancil_reindex_pipeline_shor_syndrome(scirc)
+    scirc, measurement_circuit = clifford_grouper(scirc)
+    blocks = create_blocks(scirc)
+
+    order = shor_syndrome_sort(blocks)
+    new_circuit = perfect_reindex(scirc, order)
+    new_mz = perfect_reindex(measurement_circuit, order)
+
     return vcat(gate_Shuffle!(new_circuit), new_mz), order
 end
 
