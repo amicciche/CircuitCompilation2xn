@@ -26,7 +26,7 @@ end
 """Evaluates lookup table decoder for shor style syndrome circuit. Wrapper for ['shor_error_correction_pipeline'](@ref)
 If no p_shift is provided, this runs as if it there were no shift errors. Some parameters:
 *  P_init = probability of an initial error after encoding
-*  P_shift = probability that a shift induces an error - was less than 0.01 in "Shuttling an Electron Spin through a Silicon Quantum Dot Array"
+*  P_shift = probability that a shift induces an error (per hop)- was less than 0.01% in "Shuttling an Electron Spin through a Silicon Quantum Dot Array"
 *  P_wait = probability that waiting causes a qubit to decohere
 """
 function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, scirc, p_init, p_shift=0, p_wait=0; nframes=10_000, encoding_locs=nothing)
@@ -36,27 +36,23 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, sci
         anc_qubits += mapreduce(count_ones,+, xview(pauli) .| zview(pauli))
     end
 
-    if p_shift != 0 # TODO p_shift = 0.0001 * distance
+    if p_shift != 0 
         non_mz, mz = clifford_grouper(scirc)
         non_mz = calculate_shifts(non_mz)
         scirc = []
-
-        first_shift = true
+        
+        current_delta = 0 # Starts with ancil qubits not lined up with any of the physical ones
         for subcircuit in non_mz
             # Shift!
-            if !first_shift # TODO first shift should be free
-                # Errors due to shifting the data/ancilla row - whichever is smallest
-                # TODO right now hardcoded to shift the data qubits.
-                append!(scirc, [PauliError(i,p_shift) for i in n+1:n+anc_qubits])
-                #append!(scirc, [PauliError(i,p_shift) for i in 1:n])
-            end
-            append!(scirc, subcircuit)
-            first_shift = false
+            new_delta = abs(subcircuit[1].q2-subcircuit[1].q1)
+            hops_to_new_delta = abs(new_delta-current_delta)
+            shift_error = p_shift * hops_to_new_delta
 
-            # Errors due to waiting for the next shuttle -> should this be on all qubits? Maybe the p_shift includes this for ancilla already?
+            append!(scirc, [PauliError(i,shift_error) for i in n+1:n+anc_qubits])
+            append!(scirc, subcircuit)
+            
             # TODO Should this be random Pauli error or just Z error?
             append!(scirc, [PauliError(i,p_wait) for i in 1:n]) #TODO shoudl be random Z 
-            #append!(scirc, [PauliError(i,p_wait) for i in n+1:n+anc_qubits])
         end
         append!(scirc, mz)
     end
@@ -297,13 +293,14 @@ end
 - Error rate due to waiting (decoherence)
 - Two qubit gate fidelity
 """
-function realistic_noise_logical_physical_error(code::AbstractECC, p_shift=0.01, p_wait=1-exp(-14.5/28_000), p_gate=1-0.995; name=string(typeof(code)))
+function realistic_noise_logical_physical_error(code::AbstractECC, p_shift=0.0001, p_wait=1-exp(-14.5/28_000), p_gate=1-0.998; name=string(typeof(code)))
     title = name*" Circuit - Shor Syndrome Circuit"
     checks = parity_checks(code)
     cat, scirc, anc_qubits, bit_indices = shor_syndrome_circuit(checks)
     ecirc = naive_encoding_circuit(code)
     nframes = 20_000
-    m = 1/3
+    m = 1/2
+    p_gate= 0
 
     error_rates = 0.000:0.00150:0.30
     # Uncompiled errors
@@ -314,15 +311,25 @@ function realistic_noise_logical_physical_error(code::AbstractECC, p_shift=0.01,
     x_error_s1 = [post_ec_error_rates_s1[i][1] for i in eachindex(post_ec_error_rates_s1)]
     z_error_s1 = [post_ec_error_rates_s1[i][2] for i in eachindex(post_ec_error_rates_s1)]
 
-    # Anc Compiled circuit
-    new_circuit, order = ancil_reindex_pipeline(scirc)
-    new_cat = perfect_reindex(cat, order)
-    compiled_post_ec_error_rates_s0 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, new_cat, add_two_qubit_gate_noise(new_circuit, p_gate), p, p_shift, p_wait, nframes=nframes) for p in error_rates]
-    compiled_post_ec_error_rates_s1 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, new_cat, add_two_qubit_gate_noise(new_circuit, p_gate*m), p, p_shift*m, 1-exp(-14.5*m/28_000), nframes=nframes) for p in error_rates]
-    compiled_x_error_s0 = [compiled_post_ec_error_rates_s0[i][1] for i in eachindex(compiled_post_ec_error_rates_s0)]
-    compiled_z_error_s0 = [compiled_post_ec_error_rates_s0[i][2] for i in eachindex(compiled_post_ec_error_rates_s0)]
-    compiled_x_error_s1 = [compiled_post_ec_error_rates_s1[i][1] for i in eachindex(compiled_post_ec_error_rates_s1)]
-    compiled_z_error_s1 = [compiled_post_ec_error_rates_s1[i][2] for i in eachindex(compiled_post_ec_error_rates_s1)]
+    # # Anc Compiled circuit
+    # new_circuit, order = ancil_reindex_pipeline(scirc)
+    # new_cat = perfect_reindex(cat, order)
+    # compiled_post_ec_error_rates_s0 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, new_cat, add_two_qubit_gate_noise(new_circuit, p_gate), p, p_shift, p_wait, nframes=nframes) for p in error_rates]
+    # compiled_post_ec_error_rates_s1 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, new_cat, add_two_qubit_gate_noise(new_circuit, p_gate*m), p, p_shift*m, 1-exp(-14.5*m/28_000), nframes=nframes) for p in error_rates]
+    # compiled_x_error_s0 = [compiled_post_ec_error_rates_s0[i][1] for i in eachindex(compiled_post_ec_error_rates_s0)]
+    # compiled_z_error_s0 = [compiled_post_ec_error_rates_s0[i][2] for i in eachindex(compiled_post_ec_error_rates_s0)]
+    # compiled_x_error_s1 = [compiled_post_ec_error_rates_s1[i][1] for i in eachindex(compiled_post_ec_error_rates_s1)]
+    # compiled_z_error_s1 = [compiled_post_ec_error_rates_s1[i][2] for i in eachindex(compiled_post_ec_error_rates_s1)]
+
+    # Special shor syndrome Compiled circuit
+    shor_new_circuit, shor_order = ancil_reindex_pipeline_shor_syndrome(scirc)
+    shor_cat = perfect_reindex(cat, shor_order)
+    shor_post_ec_error_rates_s0 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, shor_cat, add_two_qubit_gate_noise(shor_new_circuit, p_gate), p, p_shift, p_wait, nframes=nframes) for p in error_rates]
+    shor_post_ec_error_rates_s1 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, shor_cat, add_two_qubit_gate_noise(shor_new_circuit, p_gate*m), p, p_shift*m, 1-exp(-14.5*m/28_000), nframes=nframes) for p in error_rates]
+    shor_x_error_s0 = [shor_post_ec_error_rates_s0[i][1] for i in eachindex(shor_post_ec_error_rates_s0)]
+    shor_z_error_s0 = [shor_post_ec_error_rates_s0[i][2] for i in eachindex(shor_post_ec_error_rates_s0)]
+    shor_x_error_s1 = [shor_post_ec_error_rates_s1[i][1] for i in eachindex(shor_post_ec_error_rates_s1)]
+    shor_z_error_s1 = [shor_post_ec_error_rates_s1[i][2] for i in eachindex(shor_post_ec_error_rates_s1)]
 
     f_x = Figure(resolution=(1100,900))
     ax = f_x[1,1] = Axis(f_x, xlabel="single (qu)bit error rate - AKA error after encoding",ylabel="Logical error rate",title=title*" Logical X")
@@ -331,11 +338,15 @@ function realistic_noise_logical_physical_error(code::AbstractECC, p_shift=0.01,
 
     # Uncompiled Plots
     scatter!(error_rates, x_error_s0, label="Uncompiled with realistic errors", color=:red, marker=:star8)
-    scatter!(error_rates, x_error_s1, label="Uncompiled w/ moderately optimistic (m=1/3) params", color=:red, marker=:utriangle)
+    scatter!(error_rates, x_error_s1, label="Uncompiled w/ moderately optimistic (m=1/2) params", color=:red, marker=:utriangle)
 
-    # Compiled Plots
-    scatter!(error_rates, compiled_x_error_s0, label="Compiled (AC + GS) with realistic errors", color=:blue, marker=:star8)
-    scatter!(error_rates, compiled_x_error_s1, label="Compiled w/ moderately optimistic (m=1/3) params", color=:blue, marker=:utriangle)
+    # # Compiled Plots
+    # scatter!(error_rates, compiled_x_error_s0, label="Compiled (AC + GS) with realistic errors", color=:blue, marker=:star8)
+    # scatter!(error_rates, compiled_x_error_s1, label="Compiled w/ moderately optimistic (m=1/3) params", color=:blue, marker=:utriangle)
+
+    # Shor syndrome specialized
+    scatter!(error_rates, shor_x_error_s0, label="Shor synd specialized with realistic errors", color=:green, marker=:star8)
+    scatter!(error_rates, shor_x_error_s1, label="Shor synd specialized w/ moderately optimistic (m=1/2) params", color=:green, marker=:utriangle)
 
     f_x[1,2] = Legend(f_x, ax, "Error Rates")
 
@@ -346,11 +357,15 @@ function realistic_noise_logical_physical_error(code::AbstractECC, p_shift=0.01,
 
     # Uncompiled Plots
     scatter!(error_rates, z_error_s0, label="Uncompiled with realistic errors", color=:red, marker=:star8)
-    scatter!(error_rates, z_error_s1, label="Uncompiled w/ moderately optimistic (m=1/3) params", color=:red, marker=:utriangle)
+    scatter!(error_rates, z_error_s1, label="Uncompiled w/ moderately optimistic (m=1/2) params", color=:red, marker=:utriangle)
 
-    # Compiled Plots
-    scatter!(error_rates, compiled_z_error_s0, label="Compiled (AC + GS) with realistic errors", color=:blue, marker=:star8)
-    scatter!(error_rates, compiled_z_error_s1, label="Compiled w/ moderately optimistic (m=1/3) params", color=:blue, marker=:utriangle)
+    # # Compiled Plots
+    # scatter!(error_rates, compiled_z_error_s0, label="Compiled (AC + GS) with realistic errors", color=:blue, marker=:star8)
+    # scatter!(error_rates, compiled_z_error_s1, label="Compiled w/ moderately optimistic (m=1/3) params", color=:blue, marker=:utriangle)
+
+    # Shor syndrome specialized
+    scatter!(error_rates, shor_z_error_s0, label="Shor synd specialized with realistic errors", color=:green, marker=:star8)
+    scatter!(error_rates, shor_z_error_s1, label="Shor synd specialized w/ moderately optimistic (m=1/2) params", color=:green, marker=:utriangle)
 
     f_z[1,2] = Legend(f_z, ax, "Error Rates")
     return f_x, f_z
@@ -448,21 +463,17 @@ function evaluate_code_FTencode_FTsynd_Krishna(code::CSS, cat, scirc, p_init, p_
         non_mz = calculate_shifts(non_mz)
         scirc = []
 
-        first_shift = true
+        current_delta = 0 # Starts with ancil qubits not lined up with any of the physical ones
         for subcircuit in non_mz
-            # Shift!
-            if !first_shift
-                # Errors due to shifting the data/ancilla row - whichever is smallest
-                # TODO right now hardcoded to shift the data qubits.
-                #append!(scirc, [PauliError(i,p_shift) for i in n+1:n+anc_qubits])
-                append!(scirc, [PauliError(i,p_shift) for i in 1:n])
-            end
-            append!(scirc, subcircuit)
-            first_shift = false
+            new_delta = abs(subcircuit[1].q2-subcircuit[1].q1)
+            hops_to_new_delta = abs(new_delta-current_delta)
+            shift_error = p_shift * hops_to_new_delta
 
-            # Errors due to waiting for the next shuttle -> should this be on all qubits? Maybe the p_shift includes this for ancilla already?
+            # Shift!
+            append!(scirc, [PauliError(i,shift_error) for i in 1:n])
+            append!(scirc, subcircuit)
+
             # TODO Should this be random Pauli error or just Z error?
-            #append!(scirc, [PauliError(i,p_wait) for i in 1:n])
             append!(scirc, [PauliError(i,p_wait) for i in n+1:n+anc_qubits])
         end
         append!(scirc, mz)
@@ -470,38 +481,54 @@ function evaluate_code_FTencode_FTsynd_Krishna(code::CSS, cat, scirc, p_init, p_
     return QuantumClifford.ECC.CSS_shor_error_correction_pipeline(code, p_init, cat=cat, scirc=scirc, nframes=nframes, max_iters=max_iters)
 end
 
-# This had terrible results
+# This had terrible results - The large LDPC codes need to the gate fidelity to be about a factor of 10^4 
 """Effects of compilation against varying memory error after encoding + other realistic sources of error""" 
-function realistic_noise_logical_physical_error_ldpc(code::CSS, p_shift=0.01, p_wait=1-exp(-14.5/28_000), p_gate=1-0.995; name="")
+function realistic_noise_logical_physical_error_ldpc(code::CSS, p_shift=0.0001, p_wait=1-exp(-14.5/28_000), p_gate=1-0.998; name="")
     title = name*" Circuit - Shor Syndrome Circuit"
 
     checks = code.tableau
     cat, scirc, _ = shor_syndrome_circuit(checks)
 
-    nframes = 1000
-    m = 1/3
+    nframes = 1_000
+    m = 1/10
     p_wait = 0 # this term is fine
-    p_gate = 0 # gate error alone causes terrible performance
-    p_shift = p_shift/100
+    #p_gate = 0 # gate error alone causes terrible performance
+    p_shift = 0
 
-    error_rates = exp10.(range(-5,-1.5,length=40))
+    error_rates = exp10.(range(-5,-1,length=40))
     # Uncompiled errors
-    post_ec_error_rates_s0 = [evaluate_code_FTencode_FTsynd_Krishna(code, cat, add_two_qubit_gate_noise(scirc, p_gate), p, p_shift, p_wait, nframes=nframes) for p in error_rates]
-    post_ec_error_rates_s1 = [evaluate_code_FTencode_FTsynd_Krishna(code, cat, add_two_qubit_gate_noise(scirc, p_gate*m), p, p_shift*m, 1-exp(-14.5*m/28_000), nframes=nframes) for p in error_rates]
-    x_error_s0 = [post_ec_error_rates_s0[i][1] for i in eachindex(post_ec_error_rates_s0)]
-    z_error_s0 = [post_ec_error_rates_s0[i][2] for i in eachindex(post_ec_error_rates_s0)]
+    # noisy_scirc = add_two_qubit_gate_noise(scirc, p_gate)
+    # post_ec_error_rates_s0 = [evaluate_code_FTencode_FTsynd_Krishna(code, cat, noisy_scirc, p, p_shift, p_wait, nframes=nframes) for p in error_rates]
+    noisy_scirc_m = add_two_qubit_gate_noise(scirc, p_gate*m)
+    post_ec_error_rates_s1 = [evaluate_code_FTencode_FTsynd_Krishna(code, cat, noisy_scirc_m, p, p_shift*m, 1-exp(-14.5*m/28_000), nframes=nframes) for p in error_rates]
+    # x_error_s0 = [post_ec_error_rates_s0[i][1] for i in eachindex(post_ec_error_rates_s0)]
+    # z_error_s0 = [post_ec_error_rates_s0[i][2] for i in eachindex(post_ec_error_rates_s0)]
     x_error_s1 = [post_ec_error_rates_s1[i][1] for i in eachindex(post_ec_error_rates_s1)]
     z_error_s1 = [post_ec_error_rates_s1[i][2] for i in eachindex(post_ec_error_rates_s1)]
 
-    # Anc Compiled circuit
-    new_circuit, order = ancil_reindex_pipeline(scirc)
+    # # Anc Compiled circuit
+    # new_circuit, order = ancil_reindex_pipeline(scirc)
+    # new_cat = perfect_reindex(cat, order)
+    # noise_new_circuit = add_two_qubit_gate_noise(new_circuit, p_gate)
+    # compiled_post_ec_error_rates_s0 = [evaluate_code_FTencode_FTsynd_Krishna(code, new_cat, noise_new_circuit, p, p_shift, p_wait, nframes=nframes) for p in error_rates]
+    # noise_new_circuit_m = add_two_qubit_gate_noise(new_circuit, p_gate*m)
+    # compiled_post_ec_error_rates_s1 = [evaluate_code_FTencode_FTsynd_Krishna(code, new_cat, noise_new_circuit_m, p, p_shift*m, 1-exp(-14.5*m/28_000), nframes=nframes) for p in error_rates]
+    # compiled_x_error_s0 = [compiled_post_ec_error_rates_s0[i][1] for i in eachindex(compiled_post_ec_error_rates_s0)]
+    # compiled_z_error_s0 = [compiled_post_ec_error_rates_s0[i][2] for i in eachindex(compiled_post_ec_error_rates_s0)]
+    # compiled_x_error_s1 = [compiled_post_ec_error_rates_s1[i][1] for i in eachindex(compiled_post_ec_error_rates_s1)]
+    # compiled_z_error_s1 = [compiled_post_ec_error_rates_s1[i][2] for i in eachindex(compiled_post_ec_error_rates_s1)]
+
+    # Special shor syndrome Compiled circuit
+    new_circuit, order = ancil_reindex_pipeline_shor_syndrome(scirc)
     new_cat = perfect_reindex(cat, order)
-    compiled_post_ec_error_rates_s0 = [evaluate_code_FTencode_FTsynd_Krishna(code, new_cat, add_two_qubit_gate_noise(new_circuit, p_gate), p, p_shift, p_wait, nframes=nframes) for p in error_rates]
-    compiled_post_ec_error_rates_s1 = [evaluate_code_FTencode_FTsynd_Krishna(code, new_cat, add_two_qubit_gate_noise(new_circuit, p_gate*m), p, p_shift*m, 1-exp(-14.5*m/28_000), nframes=nframes) for p in error_rates]
-    compiled_x_error_s0 = [compiled_post_ec_error_rates_s0[i][1] for i in eachindex(compiled_post_ec_error_rates_s0)]
-    compiled_z_error_s0 = [compiled_post_ec_error_rates_s0[i][2] for i in eachindex(compiled_post_ec_error_rates_s0)]
-    compiled_x_error_s1 = [compiled_post_ec_error_rates_s1[i][1] for i in eachindex(compiled_post_ec_error_rates_s1)]
-    compiled_z_error_s1 = [compiled_post_ec_error_rates_s1[i][2] for i in eachindex(compiled_post_ec_error_rates_s1)]
+    # noise_new_circuit = add_two_qubit_gate_noise(new_circuit, p_gate)
+    # shor_post_ec_error_rates_s0 = [evaluate_code_FTencode_FTsynd_Krishna(code, new_cat, noise_new_circuit, p, p_shift, p_wait, nframes=nframes) for p in error_rates]
+    noise_new_circuit_m = add_two_qubit_gate_noise(new_circuit, p_gate*m)
+    shor_post_ec_error_rates_s1 = [evaluate_code_FTencode_FTsynd_Krishna(code, new_cat, noise_new_circuit_m, p, p_shift*m, 1-exp(-14.5*m/28_000), nframes=nframes) for p in error_rates]
+    # shor_x_error_s0 = [shor_post_ec_error_rates_s0[i][1] for i in eachindex(shor_post_ec_error_rates_s0)]
+    # shor_z_error_s0 = [shor_post_ec_error_rates_s0[i][2] for i in eachindex(shor_post_ec_error_rates_s0)]
+    shor_x_error_s1 = [shor_post_ec_error_rates_s1[i][1] for i in eachindex(shor_post_ec_error_rates_s1)]
+    shor_z_error_s1 = [shor_post_ec_error_rates_s1[i][2] for i in eachindex(shor_post_ec_error_rates_s1)]
 
     f_x = Figure(resolution=(1100,900))
     ax = f_x[1,1] = Axis(f_x, xlabel="Log10 single (qu)bit error rate - AKA error after encoding",ylabel="Log10 Logical error rate",title=title*" Logical X")
@@ -509,12 +536,16 @@ function realistic_noise_logical_physical_error_ldpc(code::CSS, p_shift=0.01, p_
     lines!([-5, 0], [-5, 0], label="single bit", color=:black)
 
     # Uncompiled Plots
-    scatter!(log10.(error_rates), log10.(x_error_s0), label="Uncompiled with realistic errors", color=:red, marker=:star8)
-    scatter!(log10.(error_rates), log10.(x_error_s1), label="Uncompiled w/ moderately optimistic (m=1/3) params", color=:red, marker=:utriangle)
+    #scatter!(log10.(error_rates), log10.(x_error_s0), label="Uncompiled with realistic errors", color=:red, marker=:star8)
+    scatter!(log10.(error_rates), log10.(x_error_s1), label="Uncompiled w/ moderately optimistic (m=1/10) params", color=:red, marker=:utriangle)
 
-    # Compiled Plots
-    scatter!(log10.(error_rates), log10.(compiled_x_error_s0), label="Compiled (AC + GS) with realistic errors", color=:blue, marker=:star8)
-    scatter!(log10.(error_rates), log10.(compiled_x_error_s1), label="Compiled w/ moderately optimistic (m=1/3) params", color=:blue, marker=:utriangle)
+    # # Compiled Plots
+    # scatter!(log10.(error_rates), log10.(compiled_x_error_s0), label="Compiled (AC + GS) with realistic errors", color=:blue, marker=:star8)
+    # scatter!(log10.(error_rates), log10.(compiled_x_error_s1), label="Compiled w/ moderately optimistic (m=1/10) params", color=:blue, marker=:utriangle)
+
+    # Shor specialized compiled Plots
+    #scatter!(log10.(error_rates), log10.(shor_x_error_s0), label="Compiled (AC + GS) with realistic errors", color=:green, marker=:star8)
+    scatter!(log10.(error_rates), log10.(shor_x_error_s1), label="Compiled w/ moderately optimistic (m=1/10) params", color=:green, marker=:utriangle)
 
     f_x[1,2] = Legend(f_x, ax, "Error Rates")
 
@@ -524,13 +555,16 @@ function realistic_noise_logical_physical_error_ldpc(code::CSS, p_shift=0.01, p_
     lines!([-5, 0], [-5, 0], label="single bit", color=:black)
 
     # Uncompiled Plots
-    scatter!(log10.(error_rates), log10.(z_error_s0), label="Uncompiled with realistic errors", color=:red, marker=:star8)
-    scatter!(log10.(error_rates), log10.(z_error_s1), label="Uncompiled w/ moderately optimistic (m=1/3) params", color=:red, marker=:utriangle)
+    #scatter!(log10.(error_rates), log10.(z_error_s0), label="Uncompiled with realistic errors", color=:red, marker=:star8)
+    scatter!(log10.(error_rates), log10.(z_error_s1), label="Uncompiled w/ moderately optimistic (m=1/10) params", color=:red, marker=:utriangle)
 
-    # Compiled Plots
-    scatter!(log10.(error_rates), log10.(compiled_z_error_s0), label="Compiled (AC + GS) with realistic errors", color=:blue, marker=:star8)
-    scatter!(log10.(error_rates), log10.(compiled_z_error_s1), label="Compiled w/ moderately optimistic (m=1/3) params", color=:blue, marker=:utriangle)
+    # # Compiled Plots
+    # scatter!(log10.(error_rates), log10.(compiled_z_error_s0), label="Compiled (AC + GS) with realistic errors", color=:blue, marker=:star8)
+    # scatter!(log10.(error_rates), log10.(compiled_z_error_s1), label="Compiled w/ moderately optimistic (m=1/10) params", color=:blue, marker=:utriangle)
 
+    # Shor specialized compiled Plots
+    #scatter!(log10.(error_rates), log10.(shor_z_error_s0), label="Compiled (AC + GS) with realistic errors", color=:green, marker=:star8)
+    scatter!(log10.(error_rates), log10.(shor_z_error_s1), label="Compiled w/ moderately optimistic (m=1/10) params", color=:green, marker=:utriangle)
     f_z[1,2] = Legend(f_z, ax, "Error Rates")
     return f_x, f_z
 end

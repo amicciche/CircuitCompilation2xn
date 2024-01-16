@@ -247,6 +247,7 @@ function shor_syndrome_sort(blockset)
     #return sorted_blockset, leftovers
 
     # TODO Step 5, make the above steps 3 and 4 into a while loop to guarantee convergence - make sure leftovers is empty
+    # TODO also that while should be breaking leftover chains 1 link at a time.
     if length(leftovers) != 0
         println("ERROR Needed step 5")
         return (sorted_blockset, leftovers)

@@ -229,10 +229,10 @@ end
 #plot = CircuitCompilation2xn.plot_LDPC_shift_reduction_cooc()
 ######################### LDPC land #########################
 
-# f_x_Steane, f_z_Steane = CircuitCompilation2xn.realistic_noise_logical_physical_error(Steane7())
-# f_x_Shor, f_z_Shor = CircuitCompilation2xn.realistic_noise_logical_physical_error(Shor9())
+#f_x_Steane, f_z_Steane = CircuitCompilation2xn.realistic_noise_logical_physical_error(Steane7())
+#f_x_Shor, f_z_Shor = CircuitCompilation2xn.realistic_noise_logical_physical_error(Shor9())
 # f_x_Cleve, f_z_Cleve = CircuitCompilation2xn.realistic_noise_logical_physical_error(Cleve8())
-# f_x_P5, f_z_P5 = CircuitCompilation2xn.realistic_noise_logical_physical_error(Perfect5())
+#f_x_P5, f_z_P5 = CircuitCompilation2xn.realistic_noise_logical_physical_error(Perfect5())
 #f_x_P5, f_z_P5 = CircuitCompilation2xn.realistic_noise_vary_params(Perfect5())
 
 function pf_encoding_plot_krishna(Cx, Cz, code::AbstractECC, name=string(typeof(code)))
@@ -305,16 +305,17 @@ function test_LDPC_shor_circuit_reindexing(Cx, Cz, checks, name=string(typeof(co
     return new_f_x, new_f_z
 end
 
- ldpc_num = 1
- stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(ldpc_num)
- f_x , f_z = test_LDPC_shor_circuit_reindexing(Cx, Cz, stab, "LDPC "*string(ldpc_num)) 
+#  ldpc_num = 3
+#  stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(ldpc_num)
+#  f_x , f_z = test_LDPC_shor_circuit_reindexing(Cx, Cz, stab, "LDPC "*string(ldpc_num)) 
 
-#Cx_Steane = stab_to_gf2(parity_checks(Steane7()))[1:3,1:7]
-#Cz_Steane = stab_to_gf2(parity_checks(Steane7()))[4:6,8:14]
-#f_x, f_z = CircuitCompilation2xn.realistic_noise_logical_physical_error_ldpc(Cx_Steane, Cz_Steane, parity_checks(Steane7()), name="Steane LDPC")
+# Cx_Steane = stab_to_gf2(parity_checks(Steane7()))[1:3,1:7]
+# Cz_Steane = stab_to_gf2(parity_checks(Steane7()))[4:6,8:14]
+# code = QuantumClifford.ECC.CSS(parity_checks(Steane7()), Cx_Steane, Cz_Steane)
+# f_x, f_z = CircuitCompilation2xn.realistic_noise_logical_physical_error_ldpc(code, name="Steane LDPC")
 
 # WARNING THIS REALLY DID NOT WORK
-# ldpc_num = 1
+# ldpc_num = 3
 # stab, Cx, Cz = CircuitCompilation2xn.getGoodLDPC(ldpc_num)
 # code = QuantumClifford.ECC.CSS(stab, Cx, Cz)
 # f_x , f_z = CircuitCompilation2xn.realistic_noise_logical_physical_error_ldpc(code, name="LDPC "*string(ldpc_num)) 
