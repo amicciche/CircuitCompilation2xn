@@ -448,7 +448,7 @@ end
 
 """Wrapper for QuantumClifford.ECC.CSS_naive_error_correction_pipeline()
 """
-function evaluate_code_decoder_FTecirc_pf_krishna(code::CSS, scirc, p_init, p_shift=0 ; nframes=1_000, max_iters = 25)
+function evaluate_code_decoder_FTecirc_pf_krishna(code::old_CSS, scirc, p_init, p_shift=0 ; nframes=1_000, max_iters = 25)
     s, n = size(code.tableau)
     _, _, r = canonicalize!(Base.copy(code.tableau), ranks=true)
     k = n - r
@@ -475,7 +475,7 @@ end
 
 """Wrapper for CSS_shor_error_correction_pipeline()
 """
-function evaluate_code_FTencode_FTsynd_Krishna(code::CSS, cat, scirc, p_init, p_shift=0, p_wait=0; nframes=10_000, max_iters = 25)
+function evaluate_code_FTencode_FTsynd_Krishna(code::old_CSS, cat, scirc, p_init, p_shift=0, p_wait=0; nframes=10_000, max_iters = 25)
     s, n = size(code.tableau)
 
     anc_qubits = 0
@@ -509,7 +509,7 @@ end
 
 # This had terrible results - The large LDPC codes need to the gate fidelity to be about a factor of 10^4 
 """Effects of compilation against varying memory error after encoding + other realistic sources of error""" 
-function realistic_noise_logical_physical_error_ldpc(code::CSS, p_shift=0.0001, p_wait=1-exp(-14.5/28_000), p_gate=1-0.998; name="")
+function realistic_noise_logical_physical_error_ldpc(code::old_CSS, p_shift=0.0001, p_wait=1-exp(-14.5/28_000), p_gate=1-0.998; name="")
     title = name*" Circuit - Shor Syndrome Circuit"
 
     checks = code.tableau

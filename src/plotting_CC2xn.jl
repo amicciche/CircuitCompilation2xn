@@ -26,7 +26,7 @@ function the_plot(code::AbstractECC, p_shift=0.0001, p_wait=1-exp(-14.5/28_000);
     z_error_MA_CA = [post_ec_error_rates_MA_CA[i][2] for i in eachindex(post_ec_error_rates_MA_CA)]
 
     # All to all connectivty - gate noise == init noise 
-    post_ec_error_rates_MA_CB= [evaluate_code_decoder_shor_syndrome(checks, ecirc, cat, add_two_qubit_gate_noise(scirc, p), p, 0, 0, nframes=nframes) for p in error_rates]
+    post_ec_error_rates_MA_CB= [evaluate_code_decoder_shor_syndrome(checks, ecirc, cat, add_two_qubit_gate_noise(scirc, p/10), p, 0, 0, nframes=nframes) for p in error_rates]
     x_error_MA_CB = [post_ec_error_rates_MA_CB[i][1] for i in eachindex(post_ec_error_rates_MA_CB)]
     z_error_MA_CB = [post_ec_error_rates_MA_CB[i][2] for i in eachindex(post_ec_error_rates_MA_CB)]
 
@@ -36,7 +36,7 @@ function the_plot(code::AbstractECC, p_shift=0.0001, p_wait=1-exp(-14.5/28_000);
     z_error_MB_CA = [post_ec_error_rates_MB_CA[i][2] for i in eachindex(post_ec_error_rates_MB_CA)]
 
     # Naive compilation and shuttle noise - gate noise == init noise 
-    post_ec_error_rates_MB_CB = [evaluate_code_decoder_shor_syndrome(checks, ecirc, cat, add_two_qubit_gate_noise(scirc, p), p, p_shift, p_wait, nframes=nframes) for p in error_rates]
+    post_ec_error_rates_MB_CB = [evaluate_code_decoder_shor_syndrome(checks, ecirc, cat, add_two_qubit_gate_noise(scirc, p/10), p, p_shift, p_wait, nframes=nframes) for p in error_rates]
     x_error_MB_CB = [post_ec_error_rates_MB_CB[i][1] for i in eachindex(post_ec_error_rates_MB_CB)]
     z_error_MB_CB = [post_ec_error_rates_MB_CB[i][2] for i in eachindex(post_ec_error_rates_MB_CB)]
 
@@ -50,7 +50,7 @@ function the_plot(code::AbstractECC, p_shift=0.0001, p_wait=1-exp(-14.5/28_000);
     z_error_MC_CA = [post_ec_error_rates_MC_CA[i][2] for i in eachindex(post_ec_error_rates_MC_CA)]
 
     # Circuit Comp gate noise == init noise
-    post_ec_error_rates_MC_CB = [evaluate_code_decoder_shor_syndrome(checks, ecirc, new_cat, add_two_qubit_gate_noise(new_circuit, p), p, p_shift, p_wait, nframes=nframes) for p in error_rates]
+    post_ec_error_rates_MC_CB = [evaluate_code_decoder_shor_syndrome(checks, ecirc, new_cat, add_two_qubit_gate_noise(new_circuit, p/10), p, p_shift, p_wait, nframes=nframes) for p in error_rates]
     x_error_MC_CB = [post_ec_error_rates_MC_CB[i][1] for i in eachindex(post_ec_error_rates_MC_CB)]
     z_error_MC_CB = [post_ec_error_rates_MC_CB[i][2] for i in eachindex(post_ec_error_rates_MC_CB)]
 
@@ -64,7 +64,7 @@ function the_plot(code::AbstractECC, p_shift=0.0001, p_wait=1-exp(-14.5/28_000);
     z_error_MD_CA = [post_ec_error_rates_MD_CA[i][2] for i in eachindex(post_ec_error_rates_MD_CA)]
 
     # Special Shor circuit Compilation - gate noise == init noise 
-    post_ec_error_rates_MD_CB = [evaluate_code_decoder_shor_syndrome(checks, ecirc, shor_cat, add_two_qubit_gate_noise(shor_new_circuit, p), p, p_shift, p_wait, nframes=nframes) for p in error_rates]
+    post_ec_error_rates_MD_CB = [evaluate_code_decoder_shor_syndrome(checks, ecirc, shor_cat, add_two_qubit_gate_noise(shor_new_circuit, p/10), p, p_shift, p_wait, nframes=nframes) for p in error_rates]
     x_error_MD_CB = [post_ec_error_rates_MD_CB[i][1] for i in eachindex(post_ec_error_rates_MD_CB)]
     z_error_MD_CB = [post_ec_error_rates_MD_CB[i][2] for i in eachindex(post_ec_error_rates_MD_CB)]
 
@@ -120,3 +120,5 @@ f_x_Steane, f_z_Steane = the_plot(Steane7())
 f_x_Shor, f_z_Shor = the_plot(Shor9())
 f_x_Cleve, f_z_Cleve = the_plot(Cleve8())
 f_x_P5, f_z_P5 = the_plot(Perfect5())
+
+#f_x_t3, f_z_t3 = the_plot(QuantumClifford.ECC.Toric(3, 3))
