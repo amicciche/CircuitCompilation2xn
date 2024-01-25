@@ -46,13 +46,15 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, sci
             # Shift!
             new_delta = abs(subcircuit[1].q2-subcircuit[1].q1)
             hops_to_new_delta = abs(new_delta-current_delta)
+            #hops_to_new_delta = 1 # TODO delete this line
             shift_error = p_shift * hops_to_new_delta
 
             append!(scirc, [PauliError(i,shift_error) for i in n+1:n+anc_qubits])
-            append!(scirc, subcircuit)
             
             # TODO Should this be random Pauli error or just Z error?
             append!(scirc, [PauliError(i,p_wait) for i in 1:n]) #TODO shoudl be random Z 
+
+            append!(scirc, subcircuit)
         end
         append!(scirc, mz)
     end
@@ -215,6 +217,19 @@ function vary_shift_errors_plot_shor_syndrome(code::AbstractECC, name=string(typ
     compiled_x_error_s100 = [compiled_post_ec_error_rates_s100[i][1] for i in eachindex(compiled_post_ec_error_rates_s100)]
     compiled_z_error_s100 = [compiled_post_ec_error_rates_s100[i][2] for i in eachindex(compiled_post_ec_error_rates_s100)]
 
+    # Special shor compilation
+    shor_circuit, shorder = ancil_reindex_pipeline_shor_syndrome(scirc)
+    shor_cat = perfect_reindex(cat, shorder)
+    shor_post_ec_error_rates_s0 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, shor_cat, shor_circuit, p, 0) for p in error_rates]
+    shor_post_ec_error_rates_s10 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, shor_cat, shor_circuit, p, p/10) for p in error_rates]
+    shor_post_ec_error_rates_s100 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, shor_cat, shor_circuit, p, p) for p in error_rates]
+    shor_x_error_s0 = [shor_post_ec_error_rates_s0[i][1] for i in eachindex(shor_post_ec_error_rates_s0)]
+    shor_z_error_s0 = [shor_post_ec_error_rates_s0[i][2] for i in eachindex(shor_post_ec_error_rates_s0)]
+    shor_x_error_s10 = [shor_post_ec_error_rates_s10[i][1] for i in eachindex(shor_post_ec_error_rates_s10)]
+    shor_z_error_s10 = [shor_post_ec_error_rates_s10[i][2] for i in eachindex(shor_post_ec_error_rates_s10)]
+    shor_x_error_s100 = [shor_post_ec_error_rates_s100[i][1] for i in eachindex(shor_post_ec_error_rates_s100)]
+    shor_z_error_s100 = [shor_post_ec_error_rates_s100[i][2] for i in eachindex(shor_post_ec_error_rates_s100)]
+
     # Data + Anc Compiled circuit
     renewed_circuit, data_order = data_ancil_reindex(scirc, total_qubits)
     renewed_ecirc = perfect_reindex(ecirc, data_order)
@@ -262,6 +277,11 @@ function vary_shift_errors_plot_shor_syndrome(code::AbstractECC, name=string(typ
     scatter!(error_rates, full_compiled_x_error_s10, label="Data + anc compiled circuit with shift errors = p/10", color=:green, marker=:utriangle)
     scatter!(error_rates, full_compiled_x_error_s100, label="Data + anc compiled circuit with shift errors = p", color=:green, marker=:star8)
 
+    # Shor Plots
+    scatter!(error_rates, shor_x_error_s0, label="Shor compiled circuit with no shift errors", color=:orange, marker=:circle)
+    scatter!(error_rates, shor_x_error_s10, label="Shor compiled circuit with shift errors = p/10", color=:orange, marker=:utriangle)
+    scatter!(error_rates, shor_x_error_s100, label="Shor compiled circuit with shift errors = p", color=:orange, marker=:star8)
+
     f_x[1,2] = Legend(f_x, ax, "Error Rates")
 
     f_z = Figure(resolution=(1100,900))
@@ -284,6 +304,11 @@ function vary_shift_errors_plot_shor_syndrome(code::AbstractECC, name=string(typ
     scatter!(error_rates, full_compiled_z_error_s10, label="Data + anc compiled circuit with shift errors = p/10", color=:green, marker=:utriangle)
     scatter!(error_rates, full_compiled_z_error_s100, label="Data + anc compiled circuit with shift errors = p", color=:green, marker=:star8)
 
+    # Shor Plots
+    scatter!(error_rates, shor_z_error_s0, label="Shor compiled circuit with no shift errors", color=:orange, marker=:circle)
+    scatter!(error_rates, shor_z_error_s10, label="Shor compiled circuit with shift errors = p/10", color=:orange, marker=:utriangle)
+    scatter!(error_rates, shor_z_error_s100, label="Shor compiled circuit with shift errors = p", color=:orange, marker=:star8)
+    
     f_z[1,2] = Legend(f_z, ax, "Error Rates")
     return f_x, f_z
 end
@@ -471,10 +496,11 @@ function evaluate_code_FTencode_FTsynd_Krishna(code::CSS, cat, scirc, p_init, p_
 
             # Shift!
             append!(scirc, [PauliError(i,shift_error) for i in 1:n])
-            append!(scirc, subcircuit)
-
+            
             # TODO Should this be random Pauli error or just Z error?
             append!(scirc, [PauliError(i,p_wait) for i in n+1:n+anc_qubits])
+
+            append!(scirc, subcircuit)
         end
         append!(scirc, mz)
     end
