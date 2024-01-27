@@ -4,7 +4,7 @@
 module CircuitCompilation2xn
 using QuantumClifford
 using CairoMakie
-using QuantumClifford.ECC: Steane7, Shor9, naive_syndrome_circuit, shor_syndrome_circuit, naive_encoding_circuit, parity_checks, code_s, code_n, AbstractECC, faults_matrix, old_CSS
+using QuantumClifford.ECC: Steane7, Shor9, naive_syndrome_circuit, shor_syndrome_circuit, naive_encoding_circuit, parity_checks, code_s, code_n, AbstractECC, faults_matrix
 using Statistics
 using Distributions
 using NPZ
@@ -643,7 +643,39 @@ function plot_code_performance_shift(error_rates, post_ec_error_rates_unsorted, 
     f
 end
 
+# This might be mathematically wrong. In practicy I've treated p_error = 1 - gate_fidelity
+"""Takes a circuit and adds a pf noise op after each two qubit gate, correspond to the provided error probability."""
+function add_two_qubit_gate_noise(circuit, p_error)
+    new_circuit = []
+    for gate in circuit
+        if isa(gate, QuantumClifford.AbstractTwoQubitOperator)
+            push!(new_circuit, gate)
+            push!(new_circuit, PauliError(gate.q1, p_error))
+            push!(new_circuit, PauliError(gate.q2, p_error))
+        else
+            push!(new_circuit, gate)
+        end
+    end
+    return new_circuit
+end
+
+"""Given a syndrome circuit, returns the fault tolerant encoding circuit. Basically just a copy of the syndrome circuit that throws away the measurement results."""
+function fault_tolerant_encoding(scirc)
+    ecirc = Vector{QuantumClifford.AbstractOperation}()
+    for gate in scirc
+        if isa(gate,sMRZ)
+            push!(ecirc, sMZ(gate.qubit))
+        elseif isa(gate,sMRX)
+            push!(ecirc, sMX(gate.qubit))
+        elseif isa(gate,sMRY)
+            push!(ecirc, sMY(gate.qubit))
+        else
+            push!(ecirc, gate)
+        end
+    end
+    return ecirc
+end
 include("./nonpf_evalutation.jl")
-include("./pf_evaluation.jl")
+#include("./pf_evaluation.jl") outdated
 include("./LDPC_functions.jl")
 end # module CircuitCompilation2xns

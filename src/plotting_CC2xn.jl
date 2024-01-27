@@ -1,13 +1,9 @@
 using CircuitCompilation2xn
-using CircuitCompilation2xn: evaluate_code_decoder_shor_syndrome, add_two_qubit_gate_noise
+using CircuitCompilation2xn: add_two_qubit_gate_noise
 using QuantumClifford
 using QuantumClifford.ECC: Steane7, Shor9, naive_syndrome_circuit, shor_syndrome_circuit, parity_checks, code_s, code_n, code_k
 using QuantumClifford.ECC: naive_encoding_circuit, Cleve8, AbstractECC, Perfect5
 using CairoMakie
-using Random
-using Statistics
-using Distributions
-using NPZ
 
 """This function is the asked for plot from Stefan in my DMs, 1/14/2024"""
 function the_plot(code::AbstractECC, p_shift=0.0001, p_wait=1-exp(-14.5/28_000); name=string(typeof(code)))
