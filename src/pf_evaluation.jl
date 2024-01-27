@@ -1,7 +1,8 @@
 """
-Wrapper for using QuantumClifford's naive_encoding_circuit function
+    Note used to be called `evaluate_code_decoder_w_ecirc_pf``
 """
-function evaluate_code_decoder_w_ecirc_pf(checks, ecirc, scirc, p_init, p_shift; nframes=10_000, encoding_locs=nothing)
+# TODO add realistic noise capabilities to this like evaluate_code_decoder_shor_syndrome
+function evaluate_code_decoder_naive(checks, decoder, ecirc, scirc, p_init, p_shift; nsamples=10_000)
     s, n = size(checks)
     if p_shift != 0
         non_mz, mz = clifford_grouper(scirc)
@@ -20,7 +21,7 @@ function evaluate_code_decoder_w_ecirc_pf(checks, ecirc, scirc, p_init, p_shift;
         append!(scirc, mz)
     end
 
-    return QuantumClifford.ECC.naive_error_correction_pipeline(checks, p_init, ecirc=ecirc, scirc=scirc, nframes=nframes, encoding_locs=encoding_locs)
+    return naive_pipeline(checks, decoder, p_init, ecirc=ecirc, scirc=scirc, nsamples=nsamples)
 end
 
 """Evaluates lookup table decoder for shor style syndrome circuit. Wrapper for ['shor_error_correction_pipeline'](@ref)
@@ -29,7 +30,7 @@ If no p_shift is provided, this runs as if it there were no shift errors. Some p
 *  P_shift = probability that a shift induces an error (per hop)- was less than 0.01% in "Shuttling an Electron Spin through a Silicon Quantum Dot Array"
 *  P_wait = probability that waiting causes a qubit to decohere
 """
-function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, scirc, p_init, p_shift=0, p_wait=0; nframes=10_000, encoding_locs=nothing)
+function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, decoder::AbstractSyndromeDecoder, ecirc, cat, scirc, p_init, p_shift=0, p_wait=0; nsamples=10_000)
     s, n = size(checks)
     anc_qubits = 0
     for pauli in checks
@@ -46,6 +47,7 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, sci
             # Shift!
             new_delta = abs(subcircuit[1].q2-subcircuit[1].q1)
             hops_to_new_delta = abs(new_delta-current_delta)
+            hops_to_new_delta = 1 # TODO delte this line
             shift_error = p_shift * hops_to_new_delta
 
             append!(scirc, [PauliError(i,shift_error) for i in n+1:n+anc_qubits])
@@ -56,7 +58,153 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, ecirc, cat, sci
         end
         append!(scirc, mz)
     end
-    return QuantumClifford.ECC.shor_error_correction_pipeline(checks, p_init, cat=cat, scirc=scirc, nframes=nframes, ecirc=ecirc, encoding_locs=encoding_locs)
+    return shor_pipeline(checks, decoder, p_init, cat=cat, scirc=scirc, nsamples=nsamples, ecirc=ecirc)
+end
+
+# TODO add encoding_locs
+function naive_pipeline(code::AbstractECC, decoder::AbstractSyndromeDecoder, p_mem; nsamples=10_000, scirc=nothing, ecirc=nothing)
+    return naive_pipeline(parity_checks(code), decoder, p_mem, nsamples=nsamples, scirc=scirc, ecirc=ecirc)
+end
+function naive_pipeline(checks::Stabilizer, decoder::AbstractSyndromeDecoder, p_mem; nsamples=10_000, scirc=nothing, ecirc=nothing)
+    if isnothing(scirc)
+        scirc, _ = QuantumClifford.ECC.naive_syndrome_circuit(checks)
+    end
+    O = faults_matrix(checks)
+
+    circuit_Z = Base.copy(scirc)
+    circuit_X = Base.copy(scirc)
+
+    s, n = size(checks)
+    _, _, r = canonicalize!(Base.copy(checks), ranks=true)
+    k = n - r
+    pre_X = [sHadamard(i) for i in n-k+1:n]
+
+    md = MixedDestabilizer(checks)
+    logview_Z = logicalzview(md)
+    logcirc_Z, numLogBits_Z, _ = naive_syndrome_circuit(logview_Z)
+    @assert numLogBits_Z == k
+
+    logview_X = logicalxview(md)
+    logcirc_X, numLogBits_X, _ = naive_syndrome_circuit(logview_X)
+    @assert numLogBits_X == k
+
+    syndrome_bits = 1:s
+    logical_bits = s+1:s+k
+
+    x_sub_matrix = O[1:k, :]
+    z_sub_matrix = O[k+1:2k, :]
+
+    errors = [PauliError(i,p_mem) for i in 1:n]
+
+    # Z logic circuit
+    for gate in logcirc_Z
+        type = typeof(gate)
+        if type == sMRZ
+            push!(circuit_Z, sMRZ(gate.qubit+s, gate.bit+s))
+        else
+            push!(circuit_Z, type(gate.q1, gate.q2+s))
+        end
+    end
+
+   # X logic circuit
+    for gate in logcirc_X
+        type = typeof(gate)
+        if type == sMRZ
+            push!(circuit_X, sMRZ(gate.qubit+s, gate.bit+s))
+        else
+            push!(circuit_X, type(gate.q1, gate.q2+s))
+        end
+    end
+
+    if isnothing(ecirc)
+        ecirc_z = fault_tolerant_encoding(circuit_Z) # double syndrome encoding
+        ecirc_x = fault_tolerant_encoding(circuit_X) 
+    else
+        ecirc_z = ecirc
+        ecirc_x = ecirc
+    end
+
+    full_x_circ = vcat(pre_X, ecirc_x, errors,  circuit_X)
+    full_z_circ = vcat(ecirc_z, errors, circuit_Z)
+
+    x_error = evaluate_decoder(decoder, nsamples, full_x_circ, syndrome_bits, logical_bits, x_sub_matrix)
+    z_error = evaluate_decoder(decoder, nsamples, full_z_circ, syndrome_bits, logical_bits, z_sub_matrix)
+
+    return x_error, z_error
+end
+
+# TODO add encoding_locs
+function shor_pipeline(code::AbstractECC, decoder::AbstractSyndromeDecoder, p_mem, nsamples=10_000, cat=nothing, scirc=nothing, ecirc=nothing)
+    return shor_pipeline(parity_checks(code), decoder, p_mem, nsamples=nsamples, cat=cat, scirc=scirc, ecirc=ecirc)
+end
+function shor_pipeline(checks::Stabilizer, decoder::AbstractSyndromeDecoder, p_mem; nsamples=10_000, cat=nothing, scirc=nothing, ecirc=nothing)
+    if isnothing(scirc) || isnothing(cat)
+        cat, scirc, _ = shor_syndrome_circuit(checks)
+    end
+
+    O = faults_matrix(checks)
+    circuit_Z = Base.copy(scirc)
+    circuit_X = Base.copy(scirc)
+
+    s, n = size(checks)
+    _, _, r = canonicalize!(Base.copy(checks), ranks=true)
+    k = n - r
+    pre_X = [sHadamard(i) for i in n-k+1:n]
+
+    anc_qubits = 0
+    for pauli in checks
+        anc_qubits += mapreduce(count_ones,+, xview(pauli) .| zview(pauli))
+    end
+    regbits = anc_qubits + s
+
+    md = MixedDestabilizer(checks)
+    logview_Z = logicalzview(md)
+    logcirc_Z, _ = naive_syndrome_circuit(logview_Z)
+
+    logview_X = logicalxview(md)
+    logcirc_X, _ = naive_syndrome_circuit(logview_X)
+
+    # Z logic circuit
+    for gate in logcirc_Z
+        type = typeof(gate)
+        if type == sMRZ
+            push!(circuit_Z, sMRZ(gate.qubit+anc_qubits, gate.bit+regbits))
+        else
+            push!(circuit_Z, type(gate.q1, gate.q2+anc_qubits))
+        end
+    end
+
+   # X logic circuit
+    for gate in logcirc_X
+        type = typeof(gate)
+        if type == sMRZ
+            push!(circuit_X, sMRZ(gate.qubit+anc_qubits, gate.bit+regbits))
+        else
+            push!(circuit_X, type(gate.q1, gate.q2+anc_qubits))
+        end
+    end
+
+    errors = [PauliError(i,p_mem) for i in 1:n]
+    if isnothing(ecirc)
+        ecirc_z = fault_tolerant_encoding(vcat(cat,circuit_Z)) # double syndrome encoding
+        ecirc_x = fault_tolerant_encoding(vcat(cat,circuit_X))
+        full_z_circ = vcat(ecirc_z, errors, circuit_Z)
+        full_x_circ = vcat(pre_X, ecirc_x, errors, circuit_X)
+    else
+        full_z_circ = vcat(ecirc, errors, cat, circuit_Z)
+        full_x_circ = vcat(pre_X, ecirc, errors, cat, circuit_X)
+    end
+
+    syndrome_bits = anc_qubits+1:regbits
+    logical_bits = regbits+1:regbits+k
+
+    x_sub_matrix = O[1:k, :]
+    z_sub_matrix = O[k+1:2k, :]
+
+    x_error = evaluate_decoder(decoder, nsamples, full_x_circ, syndrome_bits, logical_bits, x_sub_matrix)
+    z_error = evaluate_decoder(decoder, nsamples, full_z_circ, syndrome_bits, logical_bits, z_sub_matrix)
+
+    return x_error, z_error
 end
 
 """Same as [`vary_shift_errors_plot`](@ref) but uses pauli frame simulation"""
@@ -427,7 +575,7 @@ function realistic_noise_vary_params(code::AbstractECC, p_shift=0.01, p_wait=1-e
     return f_x, f_z
 end
 
-
+# TODO all the below stuff is outdated and needs to be delelted or reworked
 # """Wrapper for QuantumClifford.ECC.CSS_naive_error_correction_pipeline()
 # """
 # function evaluate_code_decoder_FTecirc_pf_krishna(code::old_CSS, scirc, p_init, p_shift=0 ; nframes=1_000, max_iters = 25)

@@ -5,6 +5,7 @@ module CircuitCompilation2xn
 using QuantumClifford
 using CairoMakie
 using QuantumClifford.ECC: Steane7, Shor9, naive_syndrome_circuit, shor_syndrome_circuit, naive_encoding_circuit, parity_checks, code_s, code_n, AbstractECC, faults_matrix
+using QuantumClifford.ECC: AbstractSyndromeDecoder, evaluate_decoder
 using Statistics
 using Distributions
 using NPZ
@@ -675,7 +676,7 @@ function fault_tolerant_encoding(scirc)
     end
     return ecirc
 end
-include("./nonpf_evalutation.jl")
-#include("./pf_evaluation.jl") outdated
+include("./nonpf_evalutation.jl") #outdated
+include("./pf_evaluation.jl") 
 include("./LDPC_functions.jl")
 end # module CircuitCompilation2xns
