@@ -16,11 +16,11 @@ function the_plot(code::AbstractECC, decoder::AbstractSyndromeDecoder=TableDecod
     return f_x, f_z
 end
 
-f_x_Steane, f_z_Steane = the_plot(Steane7())
-f_x_Shor, f_z_Shor = the_plot(Shor9())
-f_x_Cleve, f_z_Cleve = the_plot(Cleve8())
-f_x_P5, f_z_P5 = the_plot(Perfect5())
+# f_x_Steane, f_z_Steane = the_plot(Steane7())
+# f_x_Shor, f_z_Shor = the_plot(Shor9())
+# f_x_Cleve, f_z_Cleve = the_plot(Cleve8())
+# f_x_P5, f_z_P5 = the_plot(Perfect5())
 
-f_x_t3, f_z_t3 = the_plot(Toric(3, 3), PyMatchingDecoder(Toric(3, 3)), name="Toric3")
-f_x_t6, f_z_t6 = the_plot(Toric(6, 6), PyMatchingDecoder(Toric(6, 6)), name="Toric6")
-f_x_t10, f_z_t10 = the_plot(Toric(10, 10), PyMatchingDecoder(Toric(10, 10)), name="Toric10")
+# f_x_t3, f_z_t3 = the_plot(Toric(3, 3), PyMatchingDecoder(Toric(3, 3)), name="Toric3")
+# f_x_t6, f_z_t6 = the_plot(Toric(6, 6), PyMatchingDecoder(Toric(6, 6)), name="Toric6")
+# f_x_t10, f_z_t10 = the_plot(Toric(10, 10), PyMatchingDecoder(Toric(10, 10)), name="Toric10")

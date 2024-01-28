@@ -1,26 +1,31 @@
 """
     Note used to be called `evaluate_code_decoder_w_ecirc_pf``
+    also was called `evaluate_code_decoder_naive`
 """
 # TODO add realistic noise capabilities to this like evaluate_code_decoder_shor_syndrome
-function evaluate_code_decoder_naive(checks, decoder, ecirc, scirc, p_init, p_shift; nsamples=10_000)
+function evaluate_code_decoder_naive_syndrome(checks, decoder, ecirc, scirc, p_init, p_shift=0, p_wait=0; nsamples=10_000)
     s, n = size(checks)
     if p_shift != 0
         non_mz, mz = clifford_grouper(scirc)
         non_mz = calculate_shifts(non_mz)
         scirc = []
 
-        first_shift = true
+        current_delta = 0 # Starts with ancil qubits not lined up with any of the physical ones
         for subcircuit in non_mz
             # Shift!
-            if !first_shift
-                append!(scirc, [PauliError(i,p_shift) for i in n+1:n+s])
-            end
+            new_delta = abs(subcircuit[1].q2-subcircuit[1].q1)
+            hops_to_new_delta = abs(new_delta-current_delta)
+            hops_to_new_delta = 1 # TODO delte this line
+            shift_error = p_shift * hops_to_new_delta
+
+            append!(scirc, [PauliError(i,shift_error) for i in n+1:n+s])
+            
+            # TODO Should this be random Pauli error or just Z error?
+            append!(scirc, [PauliError(i,p_wait) for i in 1:n]) #TODO shoudl be random Z 
             append!(scirc, subcircuit)
-            first_shift = false
         end
         append!(scirc, mz)
     end
-
     return naive_pipeline(checks, decoder, p_init, ecirc=ecirc, scirc=scirc, nsamples=nsamples)
 end
 
