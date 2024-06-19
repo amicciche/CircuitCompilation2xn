@@ -1,9 +1,9 @@
 """
     Note used to be called `evaluate_code_decoder_w_ecirc_pf``
     also was called `evaluate_code_decoder_naive`
-"""
-# TODO add realistic noise capabilities to this like evaluate_code_decoder_shor_syndrome
-function evaluate_code_decoder_naive_syndrome(checks, decoder, ecirc, scirc, p_init, p_shift=0, p_wait=0; nsamples=10_000)
+    This function  will move all non two qubit operations to the end of the circuit
+""" # TODO maintain gate order of given circuit? Worked around by adding gate noise afterwards
+function evaluate_code_decoder_naive_syndrome(checks, decoder, ecirc, scirc, p_init, p_shift=0, p_wait=0, p_gate=0; nsamples=10_000)
     s, n = size(checks)
     if p_shift != 0
         non_mz, mz = clifford_grouper(scirc)
@@ -21,10 +21,14 @@ function evaluate_code_decoder_naive_syndrome(checks, decoder, ecirc, scirc, p_i
             append!(scirc, [PauliError(i,shift_error) for i in n+1:n+s])
             
             # TODO Should this be random Pauli error or just Z error?
-            append!(scirc, [PauliError(i,p_wait) for i in 1:n]) #TODO shoudl be random Z 
+            append!(scirc, [QuantumClifford.PauliError(i,p_wait) for i in 1:n]) #TODO shoudl be random Z 
             append!(scirc, subcircuit)
         end
         append!(scirc, mz)
+    end
+
+    if p_gate != 0 
+        scirc = add_two_qubit_gate_noise(scirc, p_gate)
     end
     return naive_pipeline(checks, decoder, p_init, ecirc=ecirc, scirc=scirc, nsamples=nsamples)
 end
@@ -35,7 +39,7 @@ If no p_shift is provided, this runs as if it there were no shift errors. Some p
 *  P_shift = probability that a shift induces an error (per hop)- was less than 0.01% in "Shuttling an Electron Spin through a Silicon Quantum Dot Array"
 *  P_wait = probability that waiting causes a qubit to decohere
 """
-function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, decoder::AbstractSyndromeDecoder, ecirc, cat, scirc, p_init, p_shift=0, p_wait=0; nsamples=10_000)
+function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, decoder::AbstractSyndromeDecoder, ecirc, cat, scirc, p_init, p_shift=0, p_wait=0, p_gate=0; nsamples=10_000)
     s, n = size(checks)
     anc_qubits = 0
     for pauli in checks
@@ -58,10 +62,13 @@ function evaluate_code_decoder_shor_syndrome(checks::Stabilizer, decoder::Abstra
             append!(scirc, [PauliError(i,shift_error) for i in n+1:n+anc_qubits])
             
             # TODO Should this be random Pauli error or just Z error?
-            append!(scirc, [PauliError(i,p_wait) for i in 1:n]) #TODO shoudl be random Z 
+            append!(scirc, [QuantumClifford.PauliError(i,p_wait) for i in 1:n]) #TODO shoudl be random Z 
             append!(scirc, subcircuit)
         end
         append!(scirc, mz)
+    end
+    if p_gate != 0 
+        scirc = add_two_qubit_gate_noise(scirc, p_gate)
     end
     return shor_pipeline(checks, decoder, p_init, cat=cat, scirc=scirc, nsamples=nsamples, ecirc=ecirc)
 end

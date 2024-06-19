@@ -64,7 +64,7 @@ function staircase(blockset)
     end
 end
 
-# This function is pretty much obsolete 
+# This function is pretty much obsolete - Acutally it is suprisingly used by naive toric code compilation 
 function identity_sort(blockset)
     sorted = []
     indices = []
@@ -103,122 +103,94 @@ function shor_syndrome_sort(blockset)
 
     staircase_size = length(blockset)
     sort!(blockset, by = x -> (x.elements[1]), rev=true)
-    hard_chains = Vector{Vector{qblock}}()
+
+    # find number of chains by finding the number of times the most common element occurs
+    # also will find the largest value which is needed to see how long a chain will be
+    max_occur = 0 # number of chains
+    prev = -2
+    current_streak = 1
     
-    # 1.) Form hard chains
+    max_value = -2 # maximum length of chain (well, one less because 0 is an element)
+
     for block in blockset
-        if length(hard_chains)==0
-            push!(hard_chains, [block])
-            continue
+        if block.elements[1] == prev
+            current_streak += 1
+        else
+            if current_streak > max_occur
+                max_occur = current_streak
+            end
+            current_streak = 1
+            prev = block.elements[1]
         end
+
+        # find max value in the same loop
+        if block.elements[1] > max_value
+            max_value = block.elements[1]
+        end
+    end
+    if current_streak > max_occur # in case the longest run happens at the end
+        max_occur = current_streak
+    end
+
+    soft_chains = [[CircuitCompilation2xn.qblock([-1],0,0,0) for _ in 0:max_value] for _ in 1:max_occur]
+
+    for block in blockset
+        index = (max_value + 1) - block.elements[1]
+
         placed = false
-        for i in 1:(length(hard_chains))
-            if block.elements[1]+1 == last(hard_chains[i]).elements[1]
-                push!(hard_chains[i], block)
+        for chain in 1:max_occur
+            if soft_chains[chain][index].elements[1] == -1 && !placed
+                soft_chains[chain][index] = block
                 placed = true
-                break
             end
         end
-
         if !placed
-            push!(hard_chains, [block])
+            println("ERROR - issue with generation of soft chains at chain, index", index)
+            break
         end
     end
 
-    #return hard_chains
-    # 2.) Form soft-links
-    sort!(hard_chains, by = x -> (length(x)), rev=true) # bring longest chains to the front
-
-    soft_chains = Vector{Vector{qblock}}()
-    for chain in hard_chains
-        max_elem = chain[1].elements[1]
-        min_elem = last(chain).elements[1]
-
-        found_a_home = false
-        for other_chain in soft_chains
-            if (max_elem < last(other_chain).elements[1]) && !found_a_home
-                gap_size = last(other_chain).elements[1] - max_elem
-                append!(other_chain, [qblock([-1], 0, 0, 0) for i in 1:gap_size-1])
-                append!(other_chain, chain)
-                found_a_home = true
-                break
-            elseif (min_elem > other_chain[1].elements[1]) && !found_a_home
-                gap_size = min_elem - other_chain[1].elements[1]
-                prepend!(other_chain, [qblock([-1], 0, 0, 0) for i in 1:gap_size-1])
-                prepend!(other_chain, chain)
-                found_a_home = true
-            end
-        end
-        if !found_a_home
-            push!(soft_chains, chain)
-        end
-    end
-    #return soft_chains
-
-    # 3. Place as many soft link chains as possible
-    
-    sorted_blockset = [CircuitCompilation2xn.qblock([-1],0,0,0) for _ in 1:staircase_size]
-    leftovers = Vector{Vector{qblock}}()
-   
+    trimmed_soft_chains = Vector{Vector{qblock}}()
     for chain in soft_chains
-        
-        assignment_index = 0
-        for cursor_position in 1:(staircase_size - length(chain) +1)
-            found_position = true
-            for chain_position in eachindex(chain)
-                if sorted_blockset[cursor_position+(chain_position-1)].elements[1] != -1 && chain[chain_position].elements[1] != -1
-                    found_position = false
-                end
-            end
-            if found_position
-                assignment_index = cursor_position
-                #println("found position!")
-                break
-            end
-        end
-        if assignment_index == 0
-            push!(leftovers, chain)
-        else
-            i = 0
-            for block in chain
-                if block.elements[1] != -1
-                    sorted_blockset[assignment_index+i] = block
-                end
-                i += 1
-            end
-        end
-    end 
-
-    #return sorted_blockset, leftovers
-
-    #4. Break up leftovers and repeat 3.)
-    leftover_chains = Vector{Vector{qblock}}()
-    new_chain = true
-    for leftover in leftovers
-        for block in leftover
-            if block.elements[1] == -1
-                new_chain = true
-                continue
+        first_non_empty = 1
+        found_start = false
+        for link in chain
+            if link.elements[1] == -1 && !found_start
+                first_non_empty += 1
             else
-                if new_chain
-                    push!(leftover_chains, [block])
-                    new_chain = false
-                else
-                    push!(last(leftover_chains), block)
-                end
+                found_start = true
             end
         end
+
+        last_non_empty = max_value+1
+        found_end = false 
+        for link in reverse(chain)
+            if link.elements[1] == -1 && !found_end
+                last_non_empty -= 1
+            else
+                found_end = true
+            end
+        end
+
+        push!(trimmed_soft_chains, chain[first_non_empty:last_non_empty])
     end
 
-    # for some reason sorting this makes it worse
-    # sort!(leftover_chains, by = x -> (length(x)), rev=false)
-    # TODO This stage definatly has some room to grow
-    # TODO look here to improve compilation performance.
-    #return leftover_chains
+    pool = trimmed_soft_chains
+    sorted_blockset = [CircuitCompilation2xn.qblock([-1],0,0,0) for _ in 1:staircase_size]
+    function num_elements(chain) # number of elements in a chain 
+        sum = 0
+        for link in chain
+            if link.elements[1] != -1
+                sum += 1
+            end
+        end
+        return sum
+    end
+    sort!(pool, by = x -> num_elements(x), rev=true)
+    
+    while length(pool) != 0 
+        chain = popfirst!(pool)
 
-    leftovers = Vector{Vector{qblock}}()
-    for chain in leftover_chains
-        
         assignment_index = 0
         for cursor_position in 1:(staircase_size - length(chain) +1)
             found_position = true
@@ -229,12 +201,42 @@ function shor_syndrome_sort(blockset)
             end
             if found_position
                 assignment_index = cursor_position
-                #println("found position!")
                 break
             end
         end
         if assignment_index == 0
-            push!(leftovers, chain)
+            # Split this chain and return it to pool and then sort again.
+            # Split based on whether first gap is closest to the front or back
+            front_split = 1
+            for link in chain
+                if link.elements[1] != -1
+                    front_split+= 1
+                else
+                    break
+                end
+            end
+
+            back_split = 1
+            for link in reverse(chain)
+                if link.elements[1] != -1
+                    back_split+= 1
+                else
+                    break
+                end
+            end
+
+            if front_split >length(chain)
+                push!(pool, chain[1:end-1])
+                push!(pool,chain[end:end])
+            elseif front_split<back_split
+                push!(pool, chain[1:front_split-1])
+                push!(pool,chain[front_split+1:end])
+            else
+                back_split = length(chain)+1 - back_split
+                push!(pool, chain[1:back_split-1])
+                push!(pool,chain[back_split+1:end])
+            end
+            sort!(pool, by = x -> num_elements(x), rev=true)
         else
             i = 0
             for block in chain
@@ -244,22 +246,13 @@ function shor_syndrome_sort(blockset)
                 i += 1
             end
         end
-    end 
-    #return sorted_blockset, leftovers
-
-    # TODO Step 5, make the above steps 3 and 4 into a while loop to guarantee convergence - make sure leftovers is empty
-    # TODO also that while should be breaking leftover chains 1 link at a time.
-    if length(leftovers) != 0
-        println("ERROR Needed step 5")
-        return (sorted_blockset, leftovers)
-    else
-        for block in sorted_blockset
-            order[block.ancil] = currentAncil
-            currentAncil += 1
-        end
-        return order
     end
 
+    for block in sorted_blockset
+        order[block.ancil] = currentAncil
+        currentAncil += 1
+    end
+    return order
 end
 
 """Splits the provided circuit into two pieces. The first piece is the one on which we reindex. The second piece contains operations that would
@@ -410,13 +403,17 @@ end
 
 """Sorts by [`get_delta`](@ref) and then returns list of parallel batches via [`calculate_shifts`](@ref)"""
 function gate_Shuffle(circuit)
-    circuit = sort(circuit, by = x -> get_delta(x))
+    non_mz, mz = clifford_grouper(circuit)
+    circuit = sort(non_mz, by = x -> get_delta(x))
     calculate_shifts(circuit)
 end
 
-"""Sorts by [`get_delta`](@ref) and then returns the circuirt"""
-function gate_Shuffle!(circuit)
-    circuit = sort!(circuit, by = x -> get_delta(x))
+# TODO Absolutely horrible name
+"""Sorts by [`get_delta`](@ref) and then returns the circuirt. One needs to do circ = gate_Shuffle!(circ)"""
+function gate_Shuffle!(circuit) # TODO 
+    non_mz, mz = clifford_grouper(circuit)
+    new_circ = sort!(non_mz, by = x -> get_delta(x))
+    return vcat(new_circ, mz)
 end
 
 """Sorts first by ghost length of the block visualation and secondarily by the total length"""
@@ -647,7 +644,7 @@ end
 # This might be mathematically wrong. In practicy I've treated p_error = 1 - gate_fidelity
 """Takes a circuit and adds a pf noise op after each two qubit gate, correspond to the provided error probability."""
 function add_two_qubit_gate_noise(circuit, p_error)
-    new_circuit = []
+    new_circuit = Vector{QuantumClifford.AbstractOperation}()
     for gate in circuit
         if isa(gate, QuantumClifford.AbstractTwoQubitOperator)
             push!(new_circuit, gate)
@@ -676,6 +673,49 @@ function fault_tolerant_encoding(scirc)
     end
     return ecirc
 end
+
+function XZsplit(circ)
+    x_circ = Vector{QuantumClifford.AbstractOperation}()
+    z_circ = Vector{QuantumClifford.AbstractOperation}()
+    other = Vector{QuantumClifford.AbstractOperation}()
+
+    for gate in circ
+        if isa(gate, sXCZ)
+            push!(x_circ, gate)
+        elseif isa(gate, sZCZ)
+            push!(z_circ, gate)
+        else
+            push!(other, gate)
+        end
+    end
+    return x_circ, z_circ, other
+end
+
+function shorNumbers(circuit)
+    shifts = []
+    a, _ = clifford_grouper(circuit) # only need the two qubit gates
+    push!(shifts, length(calculate_shifts(a)))
+    push!(shifts, length(gate_Shuffle(a)))
+
+    a_anc, _ = ancil_reindex_pipeline(a)
+    push!(shifts, length(calculate_shifts(a_anc))) 
+
+    try 
+        a_sssc, _ = ancil_reindex_pipeline_shor_syndrome(a)
+        push!(shifts, length(calculate_shifts(a_sssc))) 
+    catch
+    end
+
+    return shifts
+end
+
+function randCircuit(n, wr, wc)
+    H = LDPCDecoders.parity_check_matrix(n, wr, wc)
+    checks = Stabilizer(H, zeros(Bool, size(H)))
+    cat, scirc, _ = QuantumClifford.ECC.shor_syndrome_circuit(checks)
+    return scirc
+end
+
 include("./nonpf_evalutation.jl") #outdated
 include("./pf_evaluation.jl") 
 include("./LDPC_functions.jl")
