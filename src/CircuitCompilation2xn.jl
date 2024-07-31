@@ -542,7 +542,7 @@ function comp_numbers(circuit, total_qubits)
 
     a_data, = data_ancil_reindex(a, total_qubits)
     push!(shifts, length(calculate_shifts(a_data)))
-    
+
     return shifts
 end
 
@@ -700,12 +700,9 @@ function shorNumbers(circuit)
     a_anc, _ = ancil_reindex_pipeline(a)
     push!(shifts, length(calculate_shifts(a_anc))) 
 
-    try 
-        a_sssc, _ = ancil_reindex_pipeline_shor_syndrome(a)
-        push!(shifts, length(calculate_shifts(a_sssc))) 
-    catch
-    end
-
+    a_sssc, _ = ancil_reindex_pipeline_shor_syndrome(a)
+    push!(shifts, length(calculate_shifts(a_sssc))) 
+    
     return shifts
 end
 
