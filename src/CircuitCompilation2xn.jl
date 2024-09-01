@@ -96,7 +96,8 @@ function identity_sort(blockset)
     return order
 end
 
-function shor_syndrome_sort(blockset)
+# Extra info flag adds a second returned tuple that gives (num_chains, total num_gaps)
+function shor_syndrome_sort(blockset, extra_info=false)
     order = Dict()
     sort!(blockset, by = x -> (x.ancil), rev=false)
     currentAncil = blockset[1].ancil
@@ -176,6 +177,17 @@ function shor_syndrome_sort(blockset)
     end
 
     pool = trimmed_soft_chains
+    num_chains = length(pool)
+    num_gaps = 0
+    for chain in pool
+        for link in chain
+            if link.elements[1] == -1
+                num_gaps += 1
+            end
+        end
+    end
+    chain_info = (num_chains, num_gaps)
+
     sorted_blockset = [CircuitCompilation2xn.qblock([-1],0,0,0) for _ in 1:staircase_size]
     function num_elements(chain) # number of elements in a chain 
         sum = 0
@@ -252,7 +264,11 @@ function shor_syndrome_sort(blockset)
         order[block.ancil] = currentAncil
         currentAncil += 1
     end
-    return order
+    if extra_info
+        return order, chain_info
+    else
+        return order
+    end
 end
 
 """Splits the provided circuit into two pieces. The first piece is the one on which we reindex. The second piece contains operations that would
@@ -363,15 +379,24 @@ function ancil_reindex_pipeline(circuit, inverted=false)
 end
 
 """Special case of the reindexing pipeline that exploits the structure of Shor syndrome circuits"""
-function ancil_reindex_pipeline_shor_syndrome(scirc)
+function ancil_reindex_pipeline_shor_syndrome(scirc, extra_info=false)
     scirc, measurement_circuit = clifford_grouper(scirc)
     blocks = create_blocks(scirc)
 
-    order = shor_syndrome_sort(blocks)
+    if extra_info
+        order, chain_info = shor_syndrome_sort(blocks, extra_info)
+    else
+        order = shor_syndrome_sort(blocks)
+    end
+
     new_circuit = perfect_reindex(scirc, order)
     new_mz = perfect_reindex(measurement_circuit, order)
 
-    return vcat(gate_Shuffle!(new_circuit), new_mz), order
+    if extra_info
+        return vcat(gate_Shuffle!(new_circuit), new_mz), order, chain_info
+    else
+        return vcat(gate_Shuffle!(new_circuit), new_mz), order
+    end
 end
 
 """Delta of a gate is the difference in index of the target and control bit"""
@@ -674,23 +699,6 @@ function fault_tolerant_encoding(scirc)
     return ecirc
 end
 
-function XZsplit(circ)
-    x_circ = Vector{QuantumClifford.AbstractOperation}()
-    z_circ = Vector{QuantumClifford.AbstractOperation}()
-    other = Vector{QuantumClifford.AbstractOperation}()
-
-    for gate in circ
-        if isa(gate, sXCZ)
-            push!(x_circ, gate)
-        elseif isa(gate, sZCZ)
-            push!(z_circ, gate)
-        else
-            push!(other, gate)
-        end
-    end
-    return x_circ, z_circ, other
-end
-
 function shorNumbers(circuit)
     shifts = []
     a, _ = clifford_grouper(circuit) # only need the two qubit gates
@@ -700,9 +708,16 @@ function shorNumbers(circuit)
     a_anc, _ = ancil_reindex_pipeline(a)
     push!(shifts, length(calculate_shifts(a_anc))) 
 
-    a_sssc, _ = ancil_reindex_pipeline_shor_syndrome(a)
+    a_sssc, _, chain_info = ancil_reindex_pipeline_shor_syndrome(a, true)
     push!(shifts, length(calculate_shifts(a_sssc))) 
-    
+
+    println("Uncompiled: ", shifts[1])
+    println("Gate Shuffled: ", shifts[2])
+    println("Ancil Heuristic: ", shifts[3])
+    println("SSSC: ", shifts[4])
+
+    println("Or could do in ",chain_info[1], " shifts, using  ", chain_info[2], " blank qubits.")
+    push!(shifts, chain_info[1]); push!(shifts, chain_info[2])
     return shifts
 end
 
@@ -711,6 +726,28 @@ function randCircuit(n, wr, wc)
     checks = Stabilizer(H, zeros(Bool, size(H)))
     cat, scirc, _ = QuantumClifford.ECC.shor_syndrome_circuit(checks)
     return scirc
+end
+
+"""Returns a binary matrix, taking the OR of the X and Z matrices"""
+function get_matrix(checks::Stabilizer)
+    binary = stab_to_gf2(checks)
+    return map(|,binary[:,1:size(checks)[2]], binary[:,size(checks)[2]+1:end])
+end
+
+function max_column_weight(checks::Stabilizer)
+    matrix = get_matrix(checks)
+    return maximum(sum(matrix, dims=1))
+end
+function max_column_weight(matrix)
+    return maximum(sum(matrix, dims=1))
+end
+
+function max_row_weight(checks::Stabilizer)
+    matrix = get_matrix(checks)
+    return maximum(sum(matrix, dims=2))
+end
+function max_row_weight(matrix)
+    return maximum(sum(matrix, dims=2))
 end
 
 include("./nonpf_evalutation.jl") #outdated
