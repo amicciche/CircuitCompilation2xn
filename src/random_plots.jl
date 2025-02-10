@@ -72,8 +72,9 @@ function plot_rand_LDPC_vary_wr()
 
     shor_circ_means = [8,8,8,8,8,8,8,8,8,8,8,8,8,8]
 
-    f = Figure(size=(450, 450))
-
+    pt = 4/3
+    f = Figure(size=(500, 450),px_per_unit = 5.0, fontsize = 12.5pt)
+    
     f_x =  f[1,1]
     ax = f[1,1] = Axis(f_x, xlabel="Row Weight",ylabel="Required Shuttles After Compilation",title="Shor Syndrome vs. Naive Syndrome Compilation for \nn=120 Random Classical LDPC codes with Wc= 8")
     scatter!(f_x, row_weights, shor_circ_means, label="Shor Syndrome ", color=:orange, marker=:diamond)
@@ -120,7 +121,8 @@ function plot_rand_LDPC_vary_wc()
 
     shor_circ_means = column_weights
 
-    f = Figure(size=(450, 450))
+    pt = 4/3
+    f = Figure(size=(500, 450),px_per_unit = 5.0, fontsize = 12.5pt)
 
     f_x =  f[1,1]
     ax = f[1,1] = Axis(f_x, xlabel="Column Weight",ylabel="Required Shuttles After Compilation",title="Shor Syndrome vs. Naive Syndrome Compilation for\nn=120 Random Classical LDPC codes with Wr= 8")
