@@ -6,23 +6,24 @@ function stab_from_cxcz(Cx, Cz)
     return stab
 end
 
-function getGoodLDPC(n=1)
-    # Absolute paths to Cx and Cz npz files:
-    if n==1
-        Cx = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra1_rb2_X_rankX120_rankZ179_minWtX2_minWtZ2.npz");
-        Cz = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra1_rb2_Z_rankX120_rankZ179_minWtX2_minWtZ2.npz");
-        stab = stab_from_cxcz(Cx,Cz);
-    elseif n==2
-        Cx = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra2_rb2_X_rankX226_rankZ120_minWtX2_minWtZ2.npz");
-        Cz = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra2_rb2_Z_rankX226_rankZ120_minWtX2_minWtZ2.npz");
-        stab = stab_from_cxcz(Cx,Cz);
-    elseif n==3
-        Cx = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/3_ra1_rb2_X_rankX120_rankZ179_minWtX2_minWtZ2.npz");
-        Cz = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/3_ra1_rb2_Z_rankX120_rankZ179_minWtX2_minWtZ2.npz");
-        stab = stab_from_cxcz(Cx,Cz);
-    end
-    return stab, Cx, Cz
-end
+# TODO delte this - these codes are not good at all
+# function getGoodLDPC(n=1)
+#     # Absolute paths to Cx and Cz npz files:
+#     if n==1
+#         Cx = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra1_rb2_X_rankX120_rankZ179_minWtX2_minWtZ2.npz");
+#         Cz = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra1_rb2_Z_rankX120_rankZ179_minWtX2_minWtZ2.npz");
+#         stab = stab_from_cxcz(Cx,Cz);
+#     elseif n==2
+#         Cx = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra2_rb2_X_rankX226_rankZ120_minWtX2_minWtZ2.npz");
+#         Cz = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/1_ra2_rb2_Z_rankX226_rankZ120_minWtX2_minWtZ2.npz");
+#         stab = stab_from_cxcz(Cx,Cz);
+#     elseif n==3
+#         Cx = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/3_ra1_rb2_X_rankX120_rankZ179_minWtX2_minWtZ2.npz");
+#         Cz = npzread("/Users/micciche/Research/QuantumInfo23/JuliaProjects/codes_for_hardware_test/3_ra1_rb2_Z_rankX120_rankZ179_minWtX2_minWtZ2.npz");
+#         stab = stab_from_cxcz(Cx,Cz);
+#     end
+#     return stab, Cx, Cz
+# end
 
 function real_LDPC_numbers()
     println("First one")
@@ -106,7 +107,7 @@ function test_LDPC_shift_reduction(n,k,w_r, samples=5)
         stab = Stabilizer(zeros(Bool,n-k, n), matrix)
         scirc, _ = naive_syndrome_circuit(stab)
 
-        circuit_wo_mz, measurement_circuit = CircuitCompilation2xn.clifford_grouper(scirc)
+        circuit_wo_mz, measurement_circuit = CircuitCompilation2xn.two_qubit_sieve(scirc)
         push!(raw_shifts, length(CircuitCompilation2xn.calculate_shifts(circuit_wo_mz)))
         
         push!(gate_shuffling_shifts, length((CircuitCompilation2xn.gate_Shuffle(circuit_wo_mz))))
@@ -134,7 +135,7 @@ function test_LDPC_shift_reduction_shor_syndrome(n,k,w_r, samples=5)
         stab = Stabilizer(zeros(Bool,n-k, n), matrix)
         cat, scirc, anc_qubits, bit_indices = shor_syndrome_circuit(stab)
 
-        circuit_wo_mz, measurement_circuit = CircuitCompilation2xn.clifford_grouper(scirc)
+        circuit_wo_mz, measurement_circuit = CircuitCompilation2xn.two_qubit_sieve(scirc)
         push!(raw_shifts, length(CircuitCompilation2xn.calculate_shifts(circuit_wo_mz)))
         
         push!(gate_shuffling_shifts, length((CircuitCompilation2xn.gate_Shuffle(circuit_wo_mz))))
@@ -165,7 +166,7 @@ function average_cooc(n,k,w_r, samples=5)
         stab = Stabilizer(zeros(Bool,n-k, n), matrix)
         scirc, _ = naive_syndrome_circuit(stab)
         
-        circuit_wo_mz, measurement_circuit = CircuitCompilation2xn.clifford_grouper(scirc)
+        circuit_wo_mz, measurement_circuit = CircuitCompilation2xn.two_qubit_sieve(scirc)
         numGates = length(circuit_wo_mz)
         push!(raw_shifts, numGates/length(CircuitCompilation2xn.calculate_shifts(circuit_wo_mz)))
         

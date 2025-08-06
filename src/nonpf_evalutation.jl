@@ -99,7 +99,7 @@ function evaluate_code_decoder_w_ecirc_shifts(code::Stabilizer, ecirc, circuit, 
         apply!(state, error)
     end
 
-    non_mz, mz = clifford_grouper(circuit)
+    non_mz, mz = two_qubit_sieve(circuit)
     non_mz = calculate_shifts(non_mz)
 
     decoded = 0 # Counts correct decodings

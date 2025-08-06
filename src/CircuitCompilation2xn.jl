@@ -273,7 +273,7 @@ end
 
 """Splits the provided circuit into two pieces. The first piece is the one on which we reindex. The second piece contains operations that would
 cause an error in the reordering."""
-function clifford_grouper(circuit)
+function two_qubit_sieve(circuit)
     non_mz = Vector{QuantumClifford.AbstractOperation}()
     mz = Vector{QuantumClifford.AbstractOperation}()
     for gate in circuit
@@ -322,7 +322,7 @@ end
 
 """Runs pipline on a circuit. If using a code, ECC.naive_syndrome_circuit should be run first. Returns new circuit and ordering"""
 function ancil_reindex_pipeline(circuit, inverted=false)
-    circuit, measurement_circuit = clifford_grouper(circuit)
+    circuit, measurement_circuit = two_qubit_sieve(circuit)
     blocks = create_blocks(circuit)
 
     h1_order = ancil_sort_h1(blocks)
@@ -380,7 +380,7 @@ end
 
 """Special case of the reindexing pipeline that exploits the structure of Shor syndrome circuits"""
 function ancil_reindex_pipeline_shor_syndrome(scirc, extra_info=false)
-    scirc, measurement_circuit = clifford_grouper(scirc)
+    scirc, measurement_circuit = two_qubit_sieve(scirc)
     blocks = create_blocks(scirc)
 
     if extra_info
@@ -428,7 +428,7 @@ end
 
 """Sorts by [`get_delta`](@ref) and then returns list of parallel batches via [`calculate_shifts`](@ref)"""
 function gate_Shuffle(circuit)
-    non_mz, mz = clifford_grouper(circuit)
+    non_mz, mz = two_qubit_sieve(circuit)
     circuit = sort(non_mz, by = x -> get_delta(x))
     calculate_shifts(circuit)
 end
@@ -436,7 +436,7 @@ end
 # TODO Absolutely horrible name
 """Sorts by [`get_delta`](@ref) and then returns the circuirt. One needs to do circ = gate_Shuffle!(circ)"""
 function gate_Shuffle!(circuit) # TODO 
-    non_mz, mz = clifford_grouper(circuit)
+    non_mz, mz = two_qubit_sieve(circuit)
     new_circ = sort!(non_mz, by = x -> get_delta(x))
     return vcat(new_circ, mz)
 end
@@ -558,7 +558,7 @@ end
 """ 
 function comp_numbers(circuit, total_qubits)
     shifts = []
-    a, _ = clifford_grouper(circuit) # only need the two qubit gates
+    a, _ = two_qubit_sieve(circuit) # only need the two qubit gates
     push!(shifts, length(calculate_shifts(a)))
     push!(shifts, length(gate_Shuffle(a)))
 
@@ -701,7 +701,7 @@ end
 
 function shorNumbers(circuit)
     shifts = []
-    a, _ = clifford_grouper(circuit) # only need the two qubit gates
+    a, _ = two_qubit_sieve(circuit) # only need the two qubit gates
     push!(shifts, length(calculate_shifts(a)))
     push!(shifts, length(gate_Shuffle(a)))
 

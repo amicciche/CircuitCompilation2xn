@@ -185,7 +185,7 @@ function my_plot_both_synd(code::AbstractECC, decoder::AbstractSyndromeDecoder, 
 
         # TODO hack for working around gate commuting problem with Steane code
         if isa(code, QuantumClifford.ECC.Steane7)
-            non_mz, mz = CircuitCompilation2xn.clifford_grouper(shor_new_circuit)
+            non_mz, mz = CircuitCompilation2xn.two_qubit_sieve(shor_new_circuit)
             batches = CircuitCompilation2xn.calculate_shifts(non_mz)
             reordered_batches = batches[[1,2,4,3,5,6]]
             new_non_mz = reduce(vcat, reordered_batches)
@@ -370,7 +370,7 @@ function LDPC_plot(code::AbstractECC, decoder::AbstractSyndromeDecoder, p_shift=
 
     # TODO hack for working around gate commuting problem with Steane code
     if isa(code, QuantumClifford.ECC.Steane7)
-        non_mz, mz = CircuitCompilation2xn.clifford_grouper(shor_new_circuit)
+        non_mz, mz = CircuitCompilation2xn.two_qubit_sieve(shor_new_circuit)
         batches = CircuitCompilation2xn.calculate_shifts(non_mz)
         reordered_batches = batches[[1,2,4,3,5,6]]
         new_non_mz = reduce(vcat, reordered_batches)
@@ -515,7 +515,7 @@ function plot_for_paper_figure(code::AbstractECC, decoder::AbstractSyndromeDecod
 
         # TODO hack for working around gate commuting problem with Steane code
         if isa(code, QuantumClifford.ECC.Steane7)
-            non_mz, mz = CircuitCompilation2xn.clifford_grouper(shor_new_circuit)
+            non_mz, mz = CircuitCompilation2xn.two_qubit_sieve(shor_new_circuit)
             batches = CircuitCompilation2xn.calculate_shifts(non_mz)
             reordered_batches = batches[[1,2,4,3,5,6]]
             new_non_mz = reduce(vcat, reordered_batches)
