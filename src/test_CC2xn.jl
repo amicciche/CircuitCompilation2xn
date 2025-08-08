@@ -28,7 +28,7 @@ function test_full_reindex(code)
     new_circuit, data_order = CircuitCompilation2xn.data_ancil_reindex(code)
 
     # Reindex encoding circuit
-    new_ecirc = CircuitCompilation2xn.perfect_reindex(ecirc, data_order)
+    new_ecirc = CircuitCompilation2xn.reindex_by_dict(ecirc, data_order)
 
     diff = CircuitCompilation2xn.evaluate(mcirc, new_circuit, ecirc, code_n(code), code_s(code), code_s(code), new_ecirc, data_order)
 
@@ -42,7 +42,7 @@ function test_full_reindex_plot(code, name=string(typeof(code)))
     new_circuit, data_order = CircuitCompilation2xn.data_ancil_reindex(code)
 
     # Reindex encoding circuit
-    new_ecirc = CircuitCompilation2xn.perfect_reindex(ecirc, data_order)
+    new_ecirc = CircuitCompilation2xn.reindex_by_dict(ecirc, data_order)
 
     error_rates = 0.000:0.0025:0.08
     H = parity_checks(code)
@@ -118,7 +118,7 @@ function pf_encoding_plot(checks, name="")
     end
 
     # Reindex encoding circuit
-    new_ecirc = CircuitCompilation2xn.perfect_reindex(ecirc, data_order)
+    new_ecirc = CircuitCompilation2xn.reindex_by_dict(ecirc, data_order)
 
     # Reindex the parity checks via checks[:,parity_reindex]
     dataQubits = n
@@ -165,7 +165,7 @@ function test_shor_circuit_reindexing(code, name=string(typeof(code)))
 
     # anc compile the circuit
     new_circuit, order = CircuitCompilation2xn.ancil_reindex_pipeline(scirc)
-    new_cat = CircuitCompilation2xn.perfect_reindex(cat,order)
+    new_cat = CircuitCompilation2xn.reindex_by_dict(cat,order)
 
     post_ec_error_rates = [CircuitCompilation2xn.evaluate_code_decoder_shor_syndrome(checks, ecirc, new_cat, new_circuit, p, 0) for p in error_rates]
     x_error = [post_ec_error_rates[i][1] for i in eachindex(post_ec_error_rates)]

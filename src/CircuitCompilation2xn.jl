@@ -12,10 +12,6 @@ using NPZ
 using LDPCDecoders
 using SparseArrays
 
-threeRepCode = [sCNOT(1,4),sCNOT(2,4),sCNOT(2,5),sCNOT(3,5)]
-k4_example = [sCNOT(1,4),sCNOT(3,4),sCNOT(2,5),sCNOT(2,4),sCNOT(2,7),sCNOT(3,6),sCNOT(3,5)]
-example_that_broke_h1= [sCNOT(5,6), sCNOT(3,6),sCNOT(1,6),sCNOT(4,7),sCNOT(2,7),sCNOT(4,8)]
-
 struct qblock
     elements::Vector{Int}
     ancil::Int
@@ -326,56 +322,56 @@ function ancil_reindex_pipeline(circuit, inverted=false)
     blocks = create_blocks(circuit)
 
     h1_order = ancil_sort_h1(blocks)
-    h1_circuit = perfect_reindex(circuit, h1_order)
+    h1_circuit = reindex_by_dict(circuit, h1_order)
     h1_batches = gate_Shuffle(h1_circuit)
 
     h2_order = ancil_sort_h2(blocks)
-    h2_circuit = perfect_reindex(circuit, h2_order)
+    h2_circuit = reindex_by_dict(circuit, h2_order)
     h2_batches = gate_Shuffle(h2_circuit)
 
     h3_order = ancil_sort_h3(blocks)
-    h3_circuit = perfect_reindex(circuit, h3_order)
+    h3_circuit = reindex_by_dict(circuit, h3_order)
     h3_batches = gate_Shuffle(h3_circuit)
 
     iden_order = identity_sort(blocks)
-    iden_circuit = perfect_reindex(circuit, iden_order)
+    iden_circuit = reindex_by_dict(circuit, iden_order)
     iden_batches = gate_Shuffle(iden_circuit)
 
     # Returns the best reordered circuit
     if length(h1_batches)<=length(h2_batches) && length(h1_batches)<=length(iden_batches) && length(h1_batches)<=length(h3_batches)
         new_circuit = h1_circuit
         if !inverted
-            new_mz = perfect_reindex(measurement_circuit,h1_order)
+            new_mz = reindex_by_dict(measurement_circuit,h1_order)
         end
         order = h1_order
-        println("H1")
+        #println("H1")
     elseif length(h2_batches)<=length(h1_batches) && length(h2_batches)<=length(iden_batches) && length(h2_batches)<=length(h3_batches)
         new_circuit = h2_circuit 
         if !inverted
-            new_mz = perfect_reindex(measurement_circuit,h2_order)
+            new_mz = reindex_by_dict(measurement_circuit,h2_order)
         end
         order = h2_order
-        println("H2")
+        #println("H2")
     elseif length(h3_batches)<=length(h1_batches) && length(h3_batches)<=length(iden_batches) && length(h3_batches)<=length(h2_batches)
         new_circuit = h3_circuit
         if !inverted
-            new_mz = perfect_reindex(measurement_circuit,h3_order)
+            new_mz = reindex_by_dict(measurement_circuit,h3_order)
         end
         order = h3_order
-        println("H3")
+        #println("H3")
     else 
         new_circuit = iden_circuit
         if !inverted
-            new_mz = perfect_reindex(measurement_circuit,iden_order)
+            new_mz = reindex_by_dict(measurement_circuit,iden_order)
         end
         order = iden_order
-        println("IDEN")
+        #println("IDEN")
     end
 
     if inverted
         new_mz = measurement_circuit
     end
-    return vcat(gate_Shuffle!(new_circuit), new_mz), order
+    return vcat(gate_shuffle_circ(new_circuit), new_mz), order
 end
 
 """Special case of the reindexing pipeline that exploits the structure of Shor syndrome circuits"""
@@ -389,13 +385,13 @@ function ancil_reindex_pipeline_shor_syndrome(scirc, extra_info=false)
         order = shor_syndrome_sort(blocks)
     end
 
-    new_circuit = perfect_reindex(scirc, order)
-    new_mz = perfect_reindex(measurement_circuit, order)
+    new_circuit = reindex_by_dict(scirc, order)
+    new_mz = reindex_by_dict(measurement_circuit, order)
 
     if extra_info
-        return vcat(gate_Shuffle!(new_circuit), new_mz), order, chain_info
+        return vcat(gate_shuffle_circ(new_circuit), new_mz), order, chain_info
     else
-        return vcat(gate_Shuffle!(new_circuit), new_mz), order
+        return vcat(gate_shuffle_circ(new_circuit), new_mz), order
     end
 end
 
@@ -433,9 +429,8 @@ function gate_Shuffle(circuit)
     calculate_shifts(circuit)
 end
 
-# TODO Absolutely horrible name
-"""Sorts by [`get_delta`](@ref) and then returns the circuirt. One needs to do circ = gate_Shuffle!(circ)"""
-function gate_Shuffle!(circuit) # TODO 
+"""Sorts by [`get_delta`](@ref) and then returns the circuit. Legacy note, used to be called gate_Shuffle!"""
+function gate_shuffle_circ(circuit) 
     non_mz, mz = two_qubit_sieve(circuit)
     new_circ = sort!(non_mz, by = x -> get_delta(x))
     return vcat(new_circ, mz)
@@ -479,7 +474,7 @@ function ancil_sort_h2(blockset, startAncil=nothing)
     return order
 end
 
-"""Sorts first by total length of the block visualation and secondarily by the ghost length"""
+"""Sorts by the two norm of the total and ghost length"""
 function ancil_sort_h3(blockset, startAncil=nothing)
     if isnothing(startAncil)
         sort!(blockset, by = x -> (x.ancil), rev=false)
@@ -498,8 +493,8 @@ function ancil_sort_h3(blockset, startAncil=nothing)
     return order
 end
 
-"""This function should replace all other reindexing functions, and should work on an entire circuit."""
-function perfect_reindex(circ, order::Dict)
+"""This function should replace all other reindexing functions, and should work on an entire circuit. Legacy Note: used to be called perfect_reindex"""
+function reindex_by_dict(circ, order::Dict)
     function new_index(index::Int)
        get(order,index,index) 
     end
@@ -721,12 +716,13 @@ function shorNumbers(circuit)
     return shifts
 end
 
-function randCircuit(n, wr, wc)
-    H = LDPCDecoders.parity_check_matrix(n, wr, wc)
-    checks = Stabilizer(H, zeros(Bool, size(H)))
-    cat, scirc, _ = QuantumClifford.ECC.shor_syndrome_circuit(checks)
-    return scirc
-end
+# TODO delete after ensuring this is never used
+# function randCircuit(n, wr, wc)
+#     H = LDPCDecoders.parity_check_matrix(n, wr, wc)
+#     checks = Stabilizer(H, zeros(Bool, size(H)))
+#     cat, scirc, _ = QuantumClifford.ECC.shor_syndrome_circuit(checks)
+#     return scirc
+# end
 
 """Returns a binary matrix, taking the OR of the X and Z matrices"""
 function get_matrix(checks::Stabilizer)

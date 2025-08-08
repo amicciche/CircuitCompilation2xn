@@ -262,7 +262,7 @@ function vary_shift_errors_plot_pf(checks::Stabilizer, name="")
     for i in n-k+1:n
         push!(encoding_locs, data_order[i])
     end
-    renewed_ecirc = perfect_reindex(ecirc, data_order)
+    renewed_ecirc = reindex_by_dict(ecirc, data_order)
 
     dataQubits = n
     reverse_dict = Dict(value => key for (key, value) in data_order)
@@ -348,7 +348,7 @@ function vary_shift_errors_plot_shor_syndrome(code::AbstractECC, name=string(typ
 
     # Anc Compiled circuit
     new_circuit, order = ancil_reindex_pipeline(scirc)
-    new_cat = perfect_reindex(cat, order)
+    new_cat = reindex_by_dict(cat, order)
     compiled_post_ec_error_rates_s0 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, new_cat, new_circuit, p, 0) for p in error_rates]
     compiled_post_ec_error_rates_s10 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, new_cat, new_circuit, p, p/10) for p in error_rates]
     compiled_post_ec_error_rates_s100 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, new_cat, new_circuit, p, p) for p in error_rates]
@@ -361,7 +361,7 @@ function vary_shift_errors_plot_shor_syndrome(code::AbstractECC, name=string(typ
 
     # Special shor compilation
     shor_circuit, shorder = ancil_reindex_pipeline_shor_syndrome(scirc)
-    shor_cat = perfect_reindex(cat, shorder)
+    shor_cat = reindex_by_dict(cat, shorder)
     shor_post_ec_error_rates_s0 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, shor_cat, shor_circuit, p, 0) for p in error_rates]
     shor_post_ec_error_rates_s10 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, shor_cat, shor_circuit, p, p/10) for p in error_rates]
     shor_post_ec_error_rates_s100 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, shor_cat, shor_circuit, p, p) for p in error_rates]
@@ -374,8 +374,8 @@ function vary_shift_errors_plot_shor_syndrome(code::AbstractECC, name=string(typ
 
     # Data + Anc Compiled circuit
     renewed_circuit, data_order = data_ancil_reindex(scirc, total_qubits)
-    renewed_ecirc = perfect_reindex(ecirc, data_order)
-    renewed_cat = perfect_reindex(cat, data_order)
+    renewed_ecirc = reindex_by_dict(ecirc, data_order)
+    renewed_cat = reindex_by_dict(cat, data_order)
 
     # Data + Anc Compiled circuit
     s, n = size(checks)
@@ -480,7 +480,7 @@ function realistic_noise_logical_physical_error(code::AbstractECC, p_shift=0.000
 
     # # Anc Compiled circuit
     # new_circuit, order = ancil_reindex_pipeline(scirc)
-    # new_cat = perfect_reindex(cat, order)
+    # new_cat = reindex_by_dict(cat, order)
     # compiled_post_ec_error_rates_s0 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, new_cat, add_two_qubit_gate_noise(new_circuit, p_gate), p, p_shift, p_wait, nframes=nframes) for p in error_rates]
     # compiled_post_ec_error_rates_s1 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, new_cat, add_two_qubit_gate_noise(new_circuit, p_gate*m), p, p_shift*m, 1-exp(-14.5*m/28_000), nframes=nframes) for p in error_rates]
     # compiled_x_error_s0 = [compiled_post_ec_error_rates_s0[i][1] for i in eachindex(compiled_post_ec_error_rates_s0)]
@@ -490,7 +490,7 @@ function realistic_noise_logical_physical_error(code::AbstractECC, p_shift=0.000
 
     # Special shor syndrome Compiled circuit
     shor_new_circuit, shor_order = ancil_reindex_pipeline_shor_syndrome(scirc)
-    shor_cat = perfect_reindex(cat, shor_order)
+    shor_cat = reindex_by_dict(cat, shor_order)
     shor_post_ec_error_rates_s0 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, shor_cat, add_two_qubit_gate_noise(shor_new_circuit, p_gate), p, p_shift, p_wait, nframes=nframes) for p in error_rates]
     shor_post_ec_error_rates_s1 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, shor_cat, add_two_qubit_gate_noise(shor_new_circuit, p_gate*m), p, p_shift*m, 1-exp(-14.5*m/28_000), nframes=nframes) for p in error_rates]
     shor_x_error_s0 = [shor_post_ec_error_rates_s0[i][1] for i in eachindex(shor_post_ec_error_rates_s0)]
@@ -556,7 +556,7 @@ function realistic_noise_vary_params(code::AbstractECC, p_shift=0.01, p_wait=1-e
 
     # Anc Compiled circuit
     new_circuit, order = ancil_reindex_pipeline(scirc)
-    new_cat = perfect_reindex(cat, order)
+    new_cat = reindex_by_dict(cat, order)
     compiled_post_ec_error_rates_s0 = [evaluate_code_decoder_shor_syndrome(checks, ecirc, new_cat,
                                 add_two_qubit_gate_noise(new_circuit, p_gate*m), 0, p_shift*m, p_wait*m, nframes=nframes) for m in error_rates]
 

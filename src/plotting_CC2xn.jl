@@ -161,7 +161,7 @@ function my_plot_both_synd(code::AbstractECC, decoder::AbstractSyndromeDecoder, 
 
     # Circuit compilation
     new_circuit, order = CircuitCompilation2xn.ancil_reindex_pipeline(scirc)
-    new_cat = CircuitCompilation2xn.perfect_reindex(cat, order)
+    new_cat = CircuitCompilation2xn.reindex_by_dict(cat, order)
 
     # Circuit comp - no gate noise
     post_ec_error_rates_MC_CA_shor = [evaluate_code_decoder_shor_syndrome(checks, decoder, ecirc, new_cat, new_circuit, p, p_shift*p*m, p_wait*p*m, gate_noise*p*m, nsamples=nsamples) for p in error_rates]
@@ -181,7 +181,7 @@ function my_plot_both_synd(code::AbstractECC, decoder::AbstractSyndromeDecoder, 
     try
         # Special shor syndrome Compiled circuit
         shor_new_circuit, shor_order = CircuitCompilation2xn.ancil_reindex_pipeline_shor_syndrome(scirc)
-        shor_cat = CircuitCompilation2xn.perfect_reindex(cat, shor_order)
+        shor_cat = CircuitCompilation2xn.reindex_by_dict(cat, shor_order)
 
         # TODO hack for working around gate commuting problem with Steane code
         if isa(code, QuantumClifford.ECC.Steane7)
@@ -366,7 +366,7 @@ function LDPC_plot(code::AbstractECC, decoder::AbstractSyndromeDecoder, p_shift=
 
     # Special shor syndrome Compiled circuit
     shor_new_circuit, shor_order = CircuitCompilation2xn.ancil_reindex_pipeline_shor_syndrome(scirc)
-    shor_cat = CircuitCompilation2xn.perfect_reindex(cat, shor_order)
+    shor_cat = CircuitCompilation2xn.reindex_by_dict(cat, shor_order)
 
     # TODO hack for working around gate commuting problem with Steane code
     if isa(code, QuantumClifford.ECC.Steane7)
@@ -491,7 +491,7 @@ function plot_for_paper_figure(code::AbstractECC, decoder::AbstractSyndromeDecod
 
     # Circuit compilation
     new_circuit, order = CircuitCompilation2xn.ancil_reindex_pipeline(scirc)
-    new_cat = CircuitCompilation2xn.perfect_reindex(cat, order)
+    new_cat = CircuitCompilation2xn.reindex_by_dict(cat, order)
 
     # Circuit comp - no gate noise
     post_ec_error_rates_MC_CA_shor = [evaluate_code_decoder_shor_syndrome(checks, decoder, ecirc, new_cat, new_circuit, p, p_shift*p*m, p_wait*p*m, gate_noise*p*m, nsamples=nsamples) for p in error_rates]
@@ -511,7 +511,7 @@ function plot_for_paper_figure(code::AbstractECC, decoder::AbstractSyndromeDecod
     try
         # Special shor syndrome Compiled circuit
         shor_new_circuit, shor_order = CircuitCompilation2xn.ancil_reindex_pipeline_shor_syndrome(scirc)
-        shor_cat = CircuitCompilation2xn.perfect_reindex(cat, shor_order)
+        shor_cat = CircuitCompilation2xn.reindex_by_dict(cat, shor_order)
 
         # TODO hack for working around gate commuting problem with Steane code
         if isa(code, QuantumClifford.ECC.Steane7)

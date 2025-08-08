@@ -187,7 +187,7 @@ function CSS_my_plot_both_synd(code::bootleg_CSS, p_shift=0.0001, p_wait=1-exp(-
 
     # Circuit compilation
     new_circuit, order = CircuitCompilation2xn.ancil_reindex_pipeline(scirc)
-    new_cat = CircuitCompilation2xn.perfect_reindex(cat, order)
+    new_cat = CircuitCompilation2xn.reindex_by_dict(cat, order)
 
     # Circuit comp - no gate noise
     post_ec_error_rates_MC_CA_shor = [CSS_evaluate_code_decoder_shor_syndrome(code, new_cat, new_circuit, p, p_shift*p*m, p_wait*p*m, gate_noise*p*m, nsamples=nsamples) for p in error_rates]
@@ -207,7 +207,7 @@ function CSS_my_plot_both_synd(code::bootleg_CSS, p_shift=0.0001, p_wait=1-exp(-
     try
         # Special shor syndrome Compiled circuit
         shor_new_circuit, shor_order = CircuitCompilation2xn.ancil_reindex_pipeline_shor_syndrome(scirc)
-        shor_cat = CircuitCompilation2xn.perfect_reindex(cat, shor_order)
+        shor_cat = CircuitCompilation2xn.reindex_by_dict(cat, shor_order)
 
         # Special Shor circuit Compilation - no gate noise
         post_ec_error_rates_MD_CA_shor = [CSS_evaluate_code_decoder_shor_syndrome(code, shor_cat, shor_new_circuit, p, p_shift*p*m, p_wait*p*m, gate_noise*p*m, nsamples=nsamples) for p in error_rates]
