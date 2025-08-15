@@ -11,10 +11,11 @@ To begin, we will need either a parity check matrix (or stabilizer tableau), or 
 ![Figure 3 from paper:](assets/images/syndrome_circuits.png)
 
 From here on, this tutorial will contain a few examples, divided into sections below:
-- Naive syndrome circuits example
-- Shor syndrome circuits example
+- Naive syndrome circuit compilation example
+- Shor syndrome circuit compilation example
+- Simulation example
 
-### Naive syndrome circuits example
+### Naive syndrome circuit compilation example
 First we will need a error correction code, and while any will do, let's use one that's already defined within `QuantumClifford.jl`, and is quite pedagogical. Furthermore, one might want to consider the X and Z checks seperately to guarantee commutativity, however for this first example and for simplicity, we will consider them together. (This is addressed later in this README)
 
 ```
@@ -187,6 +188,25 @@ julia> data_comp_circ
 Note that if using an encoding circuit for simulation, that will also need to be reindexed if you reindex the data qubits:
 ```
 julia> ecirc = QuantumClifford.ECC.naive_encoding_circuit(code)
+julia> new_ecirc = CircuitCompilation2xn.reindex_by_dict(ecirc, data_order)
 ```
+
+## Shor syndrome circuit compilation example
+We devote a decent portion of our paper trying to leverage the structure of how the Shor-style syndrome extraction interact with the compilation primitives we laid out before. Furthermore, we develop a heurisitic specific to these circuit. First, like before we generate the circuits using functions from `QuantumClifford.jl`
+
+```
+using QuantumClifford
+using QuantumClifford.ECC
+code = Steane7();
+cat, scirc, _ = QuantumClifford.ECC.shor_syndrome_circuit(code);
+```
+`cat` is the circuit for constructing the cat state needed for Shor syndrome extraction, and `scirc` contains the two qubit gates and measurement. We can now reindex `scirc`  as in the naive case, we will simply need to reorder the cat state generation circuit to match. Moreover, for Shor syndrome circuits, we reccomend using our heuristic specific to these types of circuits, refered to Shor Syndrome Specialized Compilation (SSSC) in the paper. 
+```
+
+```
+
+## Nice to have functions for quick data collection
+
+## How to do simulations with this software
 ## Further information
 README under construction....
