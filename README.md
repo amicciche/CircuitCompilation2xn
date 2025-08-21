@@ -199,12 +199,41 @@ using QuantumClifford
 using QuantumClifford.ECC
 code = Steane7();
 cat, scirc, _ = QuantumClifford.ECC.shor_syndrome_circuit(code);
+vcat(cat, scirc)
 ```
-`cat` is the circuit for constructing the cat state needed for Shor syndrome extraction, and `scirc` contains the two qubit gates and measurement. We can now reindex `scirc`  as in the naive case, we will simply need to reorder the cat state generation circuit to match. Moreover, for Shor syndrome circuits, we reccomend using our heuristic specific to these types of circuits, refered to Shor Syndrome Specialized Compilation (SSSC) in the paper. 
-```
+![Uncompiled Shor style Steane circuit](assets/images/uncomp_steane_xchecks.png)
 
-```
 
+`cat` is the circuit for constructing the cat state needed for Shor syndrome extraction, and `scirc` contains the two qubit gates and measurement. We can now reindex `scirc`  as in the naive case, we will simply need to reorder the cat state generation circuit to match. Moreover, for Shor syndrome circuits, we reccomend using our heuristic specific to these types of circuits, refered to Shor Syndrome Specialized Compilation (SSSC) in the paper. Below we will only look at the X checks so that circuit can be visualized by `Quantikz.jl`. The `shor_cat` variable also demonstrates how to use the returned dictionary to reindex other parts of the error-correction circuit.
+```
+code = Steane7()
+checks = parity_checks(code)
+x_checks = checks[1:3]
+cat, scirc, _ = QuantumClifford.ECC.shor_syndrome_circuit(x_checks)
+shor_new_circuit, shor_order = CircuitCompilation2xn.ancil_reindex_pipeline_shor_syndrome(scirc)
+shor_cat = CircuitCompilation2xn.reindex_by_dict(cat, shor_order)
+vcat(shor_cat, shor_new_circuit)
+```
+![SSSC compiled Shor style Steane circuit](assets/images/sssc_steane_xchecks.png)
+
+In this case, compiling reduces the number of shuttles from 7 to 3:
+```
+julia> CircuitCompilation2xn.calculate_shifts(scirc)
+7-element Vector{Vector{QuantumClifford.AbstractOperation}}:
+ [sXCZ(4,8), sXCZ(5,9), sXCZ(6,10), sXCZ(7,11)]
+ [sXCZ(2,12), sXCZ(3,13)]
+ [sXCZ(6,14), sXCZ(7,15)]
+ [sXCZ(1,16)]
+ [sXCZ(3,17)]
+ [sXCZ(5,18)]
+ [sXCZ(7,19)]
+
+julia> CircuitCompilation2xn.calculate_shifts(shor_new_circuit)
+3-element Vector{Vector{QuantumClifford.AbstractOperation}}:
+ [sXCZ(4,11), sXCZ(5,12), sXCZ(6,13), sXCZ(7,14), sXCZ(2,9), sXCZ(3,10), sXCZ(1,8)]
+ [sXCZ(7,16)]
+ [sXCZ(6,18), sXCZ(7,19), sXCZ(3,15), sXCZ(5,17)]
+```
 ## Nice to have functions for quick data collection
 
 ## How to do simulations with this software
