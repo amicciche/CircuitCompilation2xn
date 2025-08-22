@@ -711,7 +711,7 @@ function shorNumbers(circuit)
     println("Ancil Heuristic: ", shifts[3])
     println("SSSC: ", shifts[4])
 
-    println("Or could do in ",chain_info[1], " shifts, using  ", chain_info[2], " blank qubits.")
+    println("Or could do in ",chain_info[1], " shifts, using  at most ", chain_info[2], " blank qubits.")
     push!(shifts, chain_info[1]); push!(shifts, chain_info[2])
     return shifts
 end

@@ -235,7 +235,50 @@ julia> CircuitCompilation2xn.calculate_shifts(shor_new_circuit)
  [sXCZ(6,18), sXCZ(7,19), sXCZ(3,15), sXCZ(5,17)]
 ```
 ## Nice to have functions for quick data collection
+If one is only interested in obtaining the number of shuttling operations required for different levels of compilation (and doesn't need the compiled circuit) for a given syndrome circuit, a function is provided for this for bot Shor and naive syndrome extraction. The last two numbers are related to the minimum number of shuttles, if allowing blank qubits in the array.  This number wasn't optimized, and is computed by just counting the number of gaps in the chains. Refer to the paper for more information on this. 
+
+Shor syndrome circuit:
+```
+julia> cat, scirc, _ = QuantumClifford.ECC.shor_syndrome_circuit(code);
+julia> code = Steane7();
+julia> cat, scirc, _ = QuantumClifford.ECC.shor_syndrome_circuit(code);
+julia> CircuitCompilation2xn.shorNumbers(scirc)
+Uncompiled: 14
+Gate Shuffled: 14
+Ancil Heuristic: 7
+SSSC: 6
+Or could do in 6 shifts, using  at most 2 blank qubits.
+6-element Vector{Any}:
+ 14
+ 14
+  7
+  6
+  6
+  2
+```
+
+Naive circuit: 
+```
+julia> code = Steane7();
+julia> scirc, _ = QuantumClifford.ECC.naive_syndrome_circuit(code);
+julia> num_qubits = code_n(code)+code_s(code)
+13
+julia> CircuitCompilation2xn.comp_numbers(scirc, num_qubits)
+4-element Vector{Any}:
+ 24
+ 11
+  9
+  7
+```
+24 is the uncompiled number of shuttles, 11 is gate shuffled, 9 is ancillary reindexing, and 7 is ancillary + data reindexing.
 
 ## How to do simulations with this software
+`src/plotting_CC2xn.jl` contains some lines at the bottom that can be commented or uncommented to generate various plots that appear in the paper. For example
+```
+f_Steane = my_plot_both_synd(Steane7(), TableDecoder(Steane7()))
+f_t3 = plot_for_paper_figure(Toric(3, 3), PyMatchingDecoder(Toric(3, 3)), name="Toric 3x3")
+```
+`f_Steane` will be the plot containing the 4 different physical vs logical error plots from the paper's appendix, `f_t3` generates a single plot. 
+More details coming soon...
 ## Further information
-README under construction....
+Please contact Anthony Micciche (email listed in the paper) if you have any issues running this software.
