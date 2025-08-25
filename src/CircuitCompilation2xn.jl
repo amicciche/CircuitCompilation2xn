@@ -563,6 +563,11 @@ function comp_numbers(circuit, total_qubits)
     a_data, = data_ancil_reindex(a, total_qubits)
     push!(shifts, length(calculate_shifts(a_data)))
 
+    println("Uncompiled: ", shifts[1])
+    println("Gate Shuffled: ", shifts[2])
+    println("Ancil Heuristic: ", shifts[3])
+    println("Data Reindexing: ", shifts[4])
+
     return shifts
 end
 

@@ -8,6 +8,7 @@ using Distributions
 using NPZ
 using QuantumClifford.ECC: naive_encoding_circuit, Cleve8, AbstractECC, Perfect5
 using LDPCDecoders
+using CSV
 
 function test_code(code)
     ecirc = naive_encoding_circuit(code)
@@ -276,3 +277,46 @@ end
 # f_x_Shor, f_z_Shor = test_shor_refactor(Shor9())
 # f_x_Cleve, f_z_Cleve = test_shor_refactor(Cleve8())
 # f_x_P5, f_z_P5 = test_shor_refactor(Perfect5())
+
+function compilationNumbers_2xn(code::AbstractECC, shor_file=nothing, naive_file=nothing)
+    # Shor circuits
+    println("Shor syndrome extraction")
+    x_checks = Stabilizer(BitArray(parity_matrix_x(code)), Matrix{Bool}(zeros(size(parity_matrix_x(code)))))
+    z_checks = Stabilizer(Matrix{Bool}(zeros(size(parity_matrix_z(code)))), BitArray(parity_matrix_z(code)))
+
+    println("X checks")
+    cat, x_scirc, _ = QuantumClifford.ECC.shor_syndrome_circuit(x_checks);
+    x_shor_numbers = CircuitCompilation2xn.shorNumbers(x_scirc)
+
+    println("\nZ checks")
+    cat, z_scirc, _ = QuantumClifford.ECC.shor_syndrome_circuit(z_checks);
+    z_shor_numbers = CircuitCompilation2xn.shorNumbers(z_scirc)
+
+    println("\n\nNaive syndrome extraction")
+
+    println("X checks")
+    naive_x_scirc, _ = QuantumClifford.ECC.naive_syndrome_circuit(x_checks);
+    x_naive_numbers = CircuitCompilation2xn.comp_numbers(naive_x_scirc, code_n(code)+code_s(code))
+
+    println("\nZ checks")
+    naive_z_scirc, _ = QuantumClifford.ECC.naive_syndrome_circuit(z_checks);
+    z_naive_numbers = CircuitCompilation2xn.comp_numbers(naive_z_scirc, code_n(code)+code_s(code))
+
+
+    if !isnothing(shor_file)
+        shor_row_x = (Code=string(code)*"_x", Uncompiled=x_shor_numbers[1], GateShuffled=x_shor_numbers[2], AHR=x_shor_numbers[3], SSSC=x_shor_numbers[4],AllowingBlanks=(x_shor_numbers[5],x_shor_numbers[6]))
+        shor_row_z = (Code=string(code)*"_z", Uncompiled=z_shor_numbers[1], GateShuffled=z_shor_numbers[2], AHR=z_shor_numbers[3], SSSC=z_shor_numbers[4],AllowingBlanks=(z_shor_numbers[5],z_shor_numbers[6]))
+
+        CSV.write(shor_file, [shor_row_x], append=true, writeheader=false)
+        CSV.write(shor_file, [shor_row_z], append=true, writeheader=false)
+    end
+
+    if !isnothing(naive_file)
+        naive_row_x = (Code=string(code)*"_x", Uncompiled=x_naive_numbers[1], GateShuffled=x_naive_numbers[2], AHR=x_naive_numbers[3], DataReindexing=x_naive_numbers[4])
+        naive_row_z = (Code=string(code)*"_z", Uncompiled=z_naive_numbers[1], GateShuffled=z_naive_numbers[2], AHR=z_naive_numbers[3], DataReindexing=z_naive_numbers[4])
+
+        CSV.write(naive_file, [naive_row_x], append=true, writeheader=false)
+        CSV.write(naive_file, [naive_row_z], append=true, writeheader=false)
+    end
+end
+#compilationNumbers_2xn(code, "./CircuitCompilation2xn/shor_compilation_numbers_data.csv",  "./CircuitCompilation2xn/naive_compilation_numbers_data.csv")

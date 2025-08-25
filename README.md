@@ -239,7 +239,6 @@ If one is only interested in obtaining the number of shuttling operations requir
 
 Shor syndrome circuit:
 ```
-julia> cat, scirc, _ = QuantumClifford.ECC.shor_syndrome_circuit(code);
 julia> code = Steane7();
 julia> cat, scirc, _ = QuantumClifford.ECC.shor_syndrome_circuit(code);
 julia> CircuitCompilation2xn.shorNumbers(scirc)

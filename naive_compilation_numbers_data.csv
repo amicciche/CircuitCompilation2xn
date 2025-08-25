@@ -1,0 +1,99 @@
+﻿Code,Uncompiled,GateShuffled,AHR,DataReindexing
+"Toric(3, 3)_x",32,6,11,9
+"Toric(3, 3)_z",32,6,10,9
+"Toric(4, 4)_x",60,6,12,13
+"Toric(4, 4)_z",60,6,11,15
+"Toric(3, 6)_x",68,6,11,18
+"Toric(3, 6)_z",68,6,11,19
+"Toric(4, 3)_x",44,6,12,9
+"Toric(4, 3)_z",44,6,10,10
+"Toric(5, 5)_x",96,6,12,18
+"Toric(5, 5)_z",96,6,11,20
+"Surface(3, 3)_x",20,5,5,6
+"Surface(3, 3)_z",20,6,6,7
+"Surface(4, 4)_x",42,6,6,6
+"Surface(4, 4)_z",42,7,7,8
+"Surface(3, 6)_x",50,8,8,7
+"Surface(3, 6)_z",44,9,9,10
+"Surface(4, 3)_x",28,5,5,6
+"Surface(4, 3)_z",30,6,6,7
+"Surface(5, 5)_x",72,7,7,7
+"Surface(5, 5)_z",72,8,8,9
+Shor9()_x,12,8,8,8
+Shor9()_z,10,4,4,4
+Steane7()_x,12,8,7,5
+Steane7()_z,12,8,7,5
+QuantumReedMuller(3)_x,12,7,7,5
+QuantumReedMuller(3)_z,12,7,7,5
+QuantumReedMuller(4)_x,32,15,15,11
+QuantumReedMuller(4)_z,48,13,13,12
+QuantumReedMuller(5)_x,80,31,31,24
+QuantumReedMuller(5)_z,112,20,20,19
+Triangular488(3)_x,12,6,6,5
+Triangular488(3)_z,12,6,6,5
+Triangular488(5)_x,36,13,13,12
+Triangular488(5)_z,36,13,13,12
+Triangular488(7)_x,72,21,20,20
+Triangular488(7)_z,72,21,20,20
+Triangular488(9)_x,120,31,27,30
+Triangular488(9)_z,120,31,27,30
+Triangular488(11)_x,180,43,38,43
+Triangular488(11)_z,180,43,38,43
+Triangular666(3)_x,12,6,6,5
+Triangular666(3)_z,12,6,6,5
+Triangular666(5)_x,42,13,11,11
+Triangular666(5)_z,42,13,11,11
+Triangular666(7)_x,90,23,20,20
+Triangular666(7)_z,90,23,20,20
+Triangular666(9)_x,156,36,32,30
+Triangular666(9)_z,156,36,32,30
+Triangular666(11)_x,240,52,47,38
+Triangular666(11)_z,240,52,47,38
+"LP_Roffe[[882,24,d<=24]]_x",2646,13,81,267
+"LP_Roffe[[882,24,d<=24]]_z",2646,13,32,105
+"LP_Raveendran[[175,19,d<=10]]_x",588,46,103,114
+"LP_Raveendran[[175,19,d<=10]]_z",588,53,55,114
+"GB_PanteleevKalachev[[48,6,8]]_x",192,13,38,45
+"GB_PanteleevKalachev[[48,6,8]]_z",192,13,36,49
+"GB_PanteleevKalachev[[254,28,14<=d<=20]]_x",1270,18,67,189
+"GB_PanteleevKalachev[[254,28,14<=d<=20]]_z",1270,18,67,190
+"LinPryadko[[70,8,10]]_x",280,14,42,56
+"LinPryadko[[70,8,10]]_z",280,14,40,57
+"Haah_cubic[[432,8,d]]_x",2160,48,254,354
+"Haah_cubic[[432,8,d]]_z",2160,48,160,305
+"2BGA_LinPryadko[[40,8,5]]_x",160,17,41,35
+"2BGA_LinPryadko[[40,8,5]]_z",160,17,31,33
+"2BGA_LinPryadko[[56,28,2]]_x",224,15,24,30
+"2BGA_LinPryadko[[56,28,2]]_z",224,15,15,48
+"BB_Bravyi[[756,16,d<=34]]_x",2268,19,39,94
+"BB_Bravyi[[756,16,d<=34]]_z",2268,19,58,138
+"Voss[[48,4,6]]_x",144,16,35,36
+"Voss[[48,4,6]]_z",144,16,23,39
+"CoprimeBB_WangMueller[[108,12,6]]_x",324,12,27,30
+"CoprimeBB_WangMueller[[108,12,6]]_z",324,12,22,29
+"DelfosseReichardt(2, 1, 3)_x",39,19,15,12
+"DelfosseReichardt(2, 1, 3)_z",39,19,15,12
+"DelfosseReichardt(2, 2, 4)_x",95,36,31,27
+"DelfosseReichardt(2, 2, 4)_z",95,36,31,27
+"DelfosseReichardt(4, 3, 5)_x",445,133,127,120
+"DelfosseReichardt(4, 3, 5)_z",445,133,127,120
+"DelfosseReichardt(4, 3, 6)_x",1981,277,255,239
+"DelfosseReichardt(4, 3, 6)_z",1981,277,255,239
+DelfosseReichardtRepCode(4)_x,29,16,14,11
+DelfosseReichardtRepCode(4)_z,29,16,14,11
+DelfosseReichardtRepCode(6)_x,43,23,22,16
+DelfosseReichardtRepCode(6)_z,43,23,22,16
+DelfosseReichardtRepCode(8)_x,57,31,29,23
+DelfosseReichardtRepCode(8)_z,57,31,29,23
+DelfosseReichardtRepCode(10)_x,71,38,37,28
+DelfosseReichardtRepCode(10)_z,71,38,37,28
+CyclicQuantumTannerGraphProduct(1)_x,16,6,6,7
+CyclicQuantumTannerGraphProduct(1)_z,16,6,6,7
+CyclicQuantumTannerGraphProduct(2)_x,64,6,13,14
+CyclicQuantumTannerGraphProduct(2)_z,64,6,12,16
+CyclicQuantumTannerGraphProduct(3)_x,144,6,13,23
+CyclicQuantumTannerGraphProduct(3)_z,144,6,12,25
+CyclicQuantumTannerGraphProduct(4)_x,256,6,13,31
+CyclicQuantumTannerGraphProduct(4)_z,256,6,12,33
+CyclicQuantumTannerGraphProduct(5)_x,400,6,13,39
+CyclicQuantumTannerGraphProduct(5)_z,400,6,12,41
